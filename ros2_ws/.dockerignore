@@ -1,13 +1,18 @@
+# Artefactos de build del host: la imagen compila su propio build/install/log
+# dentro del contenedor, no necesitamos (ni queremos) los del host.
 build/
 install/
 log/
-.git/
-.claude/
-__pycache__/
-*.pyc
-*.egg-info/
 
-# Mallas 3D (~387MB): no se usan en runtime por an5_mock_sim (los valores
-# del URDF ya estan hardcodeados en mock_cmd_server.py); solo hacen falta
-# si algun dia se corre RViz con frcobot_description dentro del contenedor.
-src/code/code/frcobot_description/meshes/
+# Lo mismo para el mini-workspace catkin anidado en src/code/code
+# (frcobot_description ya tiene su propio COLCON_IGNORE, esto solo achica el
+# contexto de build).
+**/build/
+**/install/
+**/log/
+
+**/__pycache__/
+*.pyc
+
+.git
+.claude

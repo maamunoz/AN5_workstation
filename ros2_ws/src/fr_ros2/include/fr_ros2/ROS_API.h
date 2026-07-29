@@ -8,13 +8,9 @@
 #include "mutex"
 #include "sys/socket.h"
 #include "sys/types.h"
-#include "sys/time.h"
 #include "netinet/in.h"
 #include "arpa/inet.h"
 #include "fcntl.h"
-#include "unistd.h"
-#include <cerrno>
-#include <chrono>
 #include <regex>
 #include "data_type_def.h"
 #include "global_val.h"
@@ -106,9 +102,6 @@ public:
 
 private:
     int (ROS_API:: *funcP)(std::string para);//函数指针是有作用域的，所以全局函数的指针和类内成员函数的指针定义有很大不同，这里不能用typedef
-    bool _connect_cmd_sockets();//创建并连接指令socket(8080/8082)
-    void _close_cmd_sockets();
-    bool _reconnect_cmd_sockets();
     int _send_data_factory_callback(std::string data);//模板函数,用于指令字符串数据的发送和反馈接收确认
     int _ParseRecvData(std::string str);//反馈值解析函数
     void _ParseROSCommandData_callback(const std::shared_ptr<frhal_msgs::srv::ROSCmdInterface::Request> req,

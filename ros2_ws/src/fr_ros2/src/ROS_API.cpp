@@ -14,10 +14,7 @@ std::string FRAPI_base::command_factry(std::string name, uint16_t counter, std::
     std::string cmd_send;
     auto iter = glob_FR_cmd_id().find(name);
     std::string cmd_id;
-    if(iter == glob_FR_cmd_id().end()){
-        RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1016: Unknown command name '%s', no command id available.",name.c_str());
-        return "";
-    }else if(iter->second == 0){
+    if(iter->second == 0){
         if(name == "GetInverseKin"){
             cmd_id = "377";
         }else if(name == "GetForwardKin"){
@@ -40,7 +37,7 @@ std::string FRAPI_base::command_factry(std::string name, uint16_t counter, std::
 
 
 ROS_API::ROS_API(const std::string node_name):FRAPI_base(),rclcpp::Node(node_name,
-           rclcpp::NodeOptions().use_intra_process_comms(true))
+           rclcpp::NodeOptions().use_intra_process_comms(true).start_parameter_services(false))
 {
     using namespace std::chrono_literals;
     _cmd_counter = 0;
@@ -91,74 +88,40 @@ ROS_API::ROS_API(const std::string node_name):FRAPI_base(),rclcpp::Node(node_nam
     );
 
     _controller_ip = "192.168.58.2";//controller ip address
-    _socketfd1 = -1;
-    _socketfd2 = -1;
     RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Start to create command TCP socket");
-    if(!_connect_cmd_sockets()){
-        RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1002:Can not connect to robot controller, program exit!");
-        exit(0);//连接失败，丢出错误并返回
-    }
-}
-
-ROS_API::~ROS_API(){
-    _close_cmd_sockets();
-}
-
-bool ROS_API::_connect_cmd_sockets(){
     _socketfd1 = socket(AF_INET,SOCK_STREAM,0);
     _socketfd2 = socket(AF_INET,SOCK_STREAM,0);
     if(_socketfd1 == -1 || _socketfd2 == -1){
         RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1001:Failed to create TCP socket");
-        _close_cmd_sockets();
-        return false;
-    }
-    struct timeval conn_timeout;//限制connect的阻塞时间，避免长时间卡死回调线程
-    conn_timeout.tv_sec = 2;
-    conn_timeout.tv_usec = 0;
-    setsockopt(_socketfd1,SOL_SOCKET,SO_SNDTIMEO,&conn_timeout,sizeof(conn_timeout));
-    setsockopt(_socketfd2,SOL_SOCKET,SO_SNDTIMEO,&conn_timeout,sizeof(conn_timeout));
-    struct sockaddr_in tcp_client1,tcp_client2;
-    tcp_client1.sin_family = AF_INET;
-    tcp_client2.sin_family = AF_INET;
-    tcp_client1.sin_port = htons(port1);//8080端口
-    tcp_client2.sin_port = htons(port2);//8082端口
-    tcp_client1.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
-    tcp_client2.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
+        exit(0);//创建套字失败，丢出错误
+    }else{
+        RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"TCP socket created! Start to connect robot controller");
+        struct sockaddr_in tcp_client1,tcp_client2;
+        tcp_client1.sin_family = AF_INET;
+        tcp_client2.sin_family = AF_INET;
+        tcp_client1.sin_port = htons(port1);//8080端口
+        tcp_client2.sin_port = htons(port2);//8082端口
+        tcp_client1.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
+        tcp_client2.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
 
-    //尝试连接控制器
-    int res1 = connect(_socketfd1,(struct sockaddr *)&tcp_client1,sizeof(tcp_client1));
-    int res2 = connect(_socketfd2,(struct sockaddr *)&tcp_client2,sizeof(tcp_client2));
-    if(res1 || res2){
-        _close_cmd_sockets();
-        return false;
-    }
-    RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Connected to robot controller!");
-    int flags1 = fcntl(_socketfd1,F_GETFL,0);
-    int flags2 = fcntl(_socketfd2,F_GETFL,0);
-    fcntl(_socketfd1,F_SETFL,flags1|O_NONBLOCK);
-    fcntl(_socketfd2,F_SETFL,flags2|O_NONBLOCK);//将两个socket设置成非阻塞模式
-    return true;
-}
-
-void ROS_API::_close_cmd_sockets(){
-    if(_socketfd1 != -1){
-        close(_socketfd1);
-        _socketfd1 = -1;
-    }
-    if(_socketfd2 != -1){
-        close(_socketfd2);
-        _socketfd2 = -1;
+        //尝试连接控制器
+        int res1 = connect(_socketfd1,(struct sockaddr *)&tcp_client1,sizeof(tcp_client1));
+        int res2 = connect(_socketfd2,(struct sockaddr *)&tcp_client2,sizeof(tcp_client2));
+        if(res1 || res2){
+            RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1002:Can not connect to robot controller, program exit!");
+            exit(0);//连接失败，丢出错误并返回
+        }else{
+            RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Connected to robot controller!");
+            int flags1 = fcntl(_socketfd1,F_GETFL,0);
+            int flags2 = fcntl(_socketfd2,F_GETFL,0);
+            fcntl(_socketfd1,F_SETFL,flags1|SOCK_NONBLOCK);
+            fcntl(_socketfd2,F_SETFL,flags2|SOCK_NONBLOCK);//将两个socket设置成非阻塞模式
+        }
     }
 }
 
-bool ROS_API::_reconnect_cmd_sockets(){
-    _close_cmd_sockets();
-    if(_connect_cmd_sockets()){
-        RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Command connection to robot controller reestablished.");
-        return true;
-    }
-    RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1002:Can not connect to robot controller, will retry on next command.");
-    return false;
+ROS_API::~ROS_API(){
+
 }
 
 void ROS_API::_selectfunc(std::string func_name){
@@ -275,55 +238,26 @@ void ROS_API::_selectfunc(std::string func_name){
 
 int ROS_API::_send_data_factory_callback(std::string data){
     using namespace std::chrono_literals;
-    char recv_buff[128];
-    if(data.empty()){//command_factry对未知指令返回空串，不发送也不等待反馈
-        return 0;
-    }
-    if(_socketfd1 == -1 && !_reconnect_cmd_sockets()){//上一条指令检测到断线，先尝试重连
-        return 0;
-    }
-    while(recv(_socketfd1,recv_buff,sizeof(recv_buff),0) > 0);//丢弃socket中残留的过期反馈，避免与本条指令的反馈混淆
-    //MSG_NOSIGNAL:对端断开时send返回-1而不是触发SIGPIPE杀死进程
-    if(send(_socketfd1,data.c_str(),data.size(),MSG_NOSIGNAL) == -1){
-        RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1014: Failed to send command to robot controller, trying to reconnect.");
-        if(!_reconnect_cmd_sockets() || send(_socketfd1,data.c_str(),data.size(),MSG_NOSIGNAL) == -1){
-            return 0;
+    static char recv_buff[128];
+    send(_socketfd1,data.c_str(),data.size(),0);//发送指令信息
+    memset(recv_buff,0,sizeof(recv_buff));
+    if(!_skip_answer_flag) {//针对servoJT指令，不需要看反馈值直接发送
+        rclcpp::sleep_for(30ms);
+        if(recv(_socketfd1,recv_buff,sizeof(recv_buff),0) > -1){
+            if(_ParseRecvData(std::string(recv_buff))){
+                if(_recv_data_cmdid == 377){
+                    return -2001;
+                }else if(_recv_data_cmdcount == _cmd_counter){//id和帧计数器能对上，说明对应回复信息是正确的
+                    return _recv_data_res;
+                }else{
+                    return 0;
+                }
+            }
         }
-    }
-    if(_skip_answer_flag){//针对servoJT指令，不需要看反馈值直接发送
+    }else{
         _skip_answer_flag = 0;
         return 0;
     }
-    std::string recv_stream;
-    std::regex frame_pattern("/f/bIII(\\d*?)III(\\d*?)III(\\d*)III(.*?)III/b/f");
-    auto deadline = std::chrono::steady_clock::now() + 500ms;//轮询等待反馈，替代原先固定30ms等待+单次recv
-    while(rclcpp::ok() && std::chrono::steady_clock::now() < deadline){
-        int nbytes = recv(_socketfd1,recv_buff,sizeof(recv_buff),0);
-        if(nbytes > 0){
-            recv_stream.append(recv_buff,nbytes);//反馈帧可能分段到达，累积后按完整帧解析
-            std::smatch frame_match;
-            while(std::regex_search(recv_stream,frame_match,frame_pattern)){
-                std::string frame = frame_match.str();
-                recv_stream = frame_match.suffix();
-                if(_ParseRecvData(frame)){
-                    if(_recv_data_cmdid == 377){
-                        return -2001;
-                    }else if(_recv_data_cmdcount == _cmd_counter){//id和帧计数器能对上，说明对应回复信息是正确的
-                        return _recv_data_res;
-                    }
-                    //帧计数器对不上：是之前超时指令的过期反馈，丢弃并继续等待
-                }
-            }
-        }else if(nbytes == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)){//对端关闭连接或socket出错(如ECONNRESET)
-            RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1015: Command connection to robot controller lost, trying to reconnect.");
-            _reconnect_cmd_sockets();
-            return 0;
-        }else{
-            rclcpp::sleep_for(5ms);//暂无数据，稍后重试
-        }
-    }
-    RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1013: No valid response received from robot controller within timeout.");
-    return 0;
 }
 
 
@@ -523,7 +457,6 @@ std::string ROS_API::_get_variable(std::string para_list){
         RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1054: Illegal command function format, the function name must fllow fomart [function name](parameters).");
         //std::cout << "指令错误: GET指令参数非法,参数形式为[JNT|CART],[序号]" << std::endl;
     }
-    return std::string("0");
 }
 
 int  ROS_API::DragTeachSwitch(std::string para){//拖动示教模式切换

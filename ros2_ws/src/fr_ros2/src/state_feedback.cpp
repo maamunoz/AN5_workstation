@@ -4,99 +4,61 @@
 /******状态信息获取节点******/
 /*************************/
 state_recv_thread::state_recv_thread(const std::string node_name):rclcpp::Node(node_name,
-                   rclcpp::NodeOptions().use_intra_process_comms(true))
+                   rclcpp::NodeOptions().use_intra_process_comms(true).start_parameter_services(false))
 {
     using namespace std::chrono_literals;
     _controller_ip = "192.168.58.2";//控制器默认ip地址
     RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Start to create state feedback TCP socket.");
-    _next_reconnect_time = std::chrono::steady_clock::now();
-    if(!_connect_state_socket()){
-        RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1002:Can not connect to robot controller, program exit!");
-        exit(0);//连接失败，丢出错误并返回
+    //std::cout << "开始创建状态反馈TCP socket" << std::endl;
+    _socketfd1 = socket(AF_INET,SOCK_STREAM,0);//状态获取端口只有TCP
+    if(_socketfd1 == -1){
+        RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1001:Failed to create state feedback TCP socket");
+        //std::cout << "错误: 创建socket失败！" << std::endl;
+        exit(0);//创建套字失败，丢出错误
+    }else{
+        RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"State feedback TCP socket created.");
+        //std::cout << "创建状态反馈socket成功，开始连接控制器..." << std::endl;
+        struct sockaddr_in tcp_client1;
+        tcp_client1.sin_family = AF_INET;
+        tcp_client1.sin_port = htons(port1);//8083端口
+        tcp_client1.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
+
+        //尝试连接控制器
+        int res1 = connect(_socketfd1,(struct sockaddr *)&tcp_client1,sizeof(tcp_client1));
+        if(res1){
+            RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1002:Can not connect to robot controller, program exit!");
+            //std::cout << "错误:无法连接控制器数据端口，程序退出!" << std::endl;
+            exit(0);//连接失败，丢出错误并返回
+        }else{
+            RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Connected to robot controller.");
+            //std::cout << "控制器状态端口连接成功" << std::endl;
+            //将socket设置成非阻塞模式
+            int flags1 = fcntl(_socketfd1,F_GETFL,0);
+            fcntl(_socketfd1,F_SETFL,flags1|SOCK_NONBLOCK);
+            //std::cout << "数据反馈端口配置成功" << std::endl;
+            _state_publisher = this->create_publisher<frhal_msgs::msg::FRState>(
+                "nonrt_state_data",
+                10
+            );
+            _locktimer = this->create_wall_timer(100ms,std::bind(&state_recv_thread::_state_recv_callback,this));//创建一个定时器任务用于获取非实时状态数据，触发间隔为100ms
+        }
     }
-    _state_publisher = this->create_publisher<frhal_msgs::msg::FRState>(
-        "nonrt_state_data",
-        10
-    );
-    _locktimer = this->create_wall_timer(100ms,std::bind(&state_recv_thread::_state_recv_callback,this));//创建一个定时器任务用于获取非实时状态数据，触发间隔为100ms
 }
 
 state_recv_thread::~state_recv_thread(){
     //关闭并销毁socket
-    _close_state_socket();
-}
-
-bool state_recv_thread::_connect_state_socket(){
-    _socketfd1 = socket(AF_INET,SOCK_STREAM,0);//状态获取端口只有TCP
-    if(_socketfd1 == -1){
-        RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1001:Failed to create state feedback TCP socket");
-        return false;
-    }
-    struct timeval conn_timeout;//限制connect的阻塞时间，避免长时间卡死定时器线程
-    conn_timeout.tv_sec = 2;
-    conn_timeout.tv_usec = 0;
-    setsockopt(_socketfd1,SOL_SOCKET,SO_SNDTIMEO,&conn_timeout,sizeof(conn_timeout));
-    struct sockaddr_in tcp_client1;
-    tcp_client1.sin_family = AF_INET;
-    tcp_client1.sin_port = htons(port1);//8083端口
-    tcp_client1.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
-
-    //尝试连接控制器
-    int res1 = connect(_socketfd1,(struct sockaddr *)&tcp_client1,sizeof(tcp_client1));
-    if(res1){
-        _close_state_socket();
-        return false;
-    }
-    RCLCPP_INFO(rclcpp::get_logger("fairino_hardware"),"Connected to robot controller.");
-    //将socket设置成非阻塞模式
-    int flags1 = fcntl(_socketfd1,F_GETFL,0);
-    fcntl(_socketfd1,F_SETFL,flags1|O_NONBLOCK);
-    _recv_offset = 0;//新连接从帧边界开始
-    return true;
-}
-
-void state_recv_thread::_close_state_socket(){
     if(_socketfd1 != -1){
         close(_socketfd1);
-        _socketfd1 = -1;
     }
 }
 
 void state_recv_thread::_state_recv_callback(){
     static char recv_buff[sizeof(FR_nonrt_state)];
     static FR_nonrt_state state_data;
-    if(_socketfd1 == -1){//连接已断开，按限定频率尝试重连
-        if(std::chrono::steady_clock::now() >= _next_reconnect_time){
-            _next_reconnect_time = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-            if(!_connect_state_socket()){
-                RCLCPP_WARN(rclcpp::get_logger("fairino_hardware"),"Reconnect to robot controller state port failed, will retry.");
-            }
-        }
-        if(_socketfd1 == -1){
-            return;
-        }
-    }
-    bool got_full_state = false;
-    while(true){//读空socket缓冲，只发布最新的完整状态帧，避免数据积压滞后
-        int nbytes = recv(_socketfd1,recv_buff+_recv_offset,sizeof(recv_buff)-_recv_offset,0);
-        if(nbytes > 0){
-            _recv_offset += nbytes;
-            if(_recv_offset == sizeof(recv_buff)){//状态帧可能分段到达，累积满一帧才解析
-                memcpy(&state_data,recv_buff,sizeof(recv_buff));
-                _recv_offset = 0;
-                got_full_state = true;
-            }
-        }else if(nbytes == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)){//对端关闭连接或socket出错(如ECONNRESET)
-            RCLCPP_ERROR(rclcpp::get_logger("fairino_hardware"),"-1003: State connection to robot controller lost, will try to reconnect.");
-            _close_state_socket();
-            _next_reconnect_time = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-            break;
-        }else{//暂无更多数据(EAGAIN)
-            break;
-        }
-    }
-    if(got_full_state){
+    memset(recv_buff,0,sizeof(recv_buff));
+    if(recv(_socketfd1,recv_buff,sizeof(recv_buff),0) > -1){
         //std::cout << "got state data" << std::endl;
+        memcpy(&state_data,recv_buff,sizeof(recv_buff));
         auto msg = frhal_msgs::msg::FRState();
         msg.prg_state = state_data.prg_state;
         msg.error_code = state_data.error_code;

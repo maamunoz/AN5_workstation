@@ -145,8 +145,8 @@ class CartesianPointSender(Node):
 
     def send_cartesian_points(self):
         # Rutas de los archivos (ajústalas según tu entorno)
-        cartesian_file = '/home/tarw/Interfaz AppDesigner AN5/python_position.txt'
-        joint_file = '/home/tarw/Interfaz AppDesigner AN5/joint_python_position.txt'
+        cartesian_file = '/home/mooz/Interfaces-AN5/Interfaz AppDesigner AN5/python_position.txt'
+        joint_file = '/home/mooz/Interfaces-AN5/Interfaz AppDesigner AN5/joint_python_position.txt'
         
         points = self.read_cartesian_points(cartesian_file)
         joint_positions = self.read_joint_positions(joint_file)

@@ -54,9 +54,7 @@ std::map<std::string,int>& glob_FR_cmd_id(){
     {"StopMotion",102},
     {"PointsOffsetEnable",718},
     {"PointsOffsetDisable",719},//运动指令
-    {"ProgramRun",101},
-    {"GetForwardKin",0},//0表示运动学接口，command_factry会将其映射到id 377
-    {"GetInverseKin",0}
+    {"ProgramRun",101}
 };
     return tmp;
 }

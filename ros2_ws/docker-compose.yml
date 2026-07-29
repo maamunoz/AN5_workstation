@@ -1,10 +1,28 @@
 services:
-  an5_mock_sim:
+  fr5-sim:
     build: .
-    image: an5_mock_sim:latest
+    image: fr5_ros2:latest
+    container_name: fr5_ros2_sim
+    # ports (no network_mode: host): funciona igual en Linux y en Docker
+    # Desktop (Mac/Windows) -- ahi network_mode: host apunta a la red
+    # interna de la VM de Docker Desktop, no a la maquina real, y el
+    # puerto queda inalcanzable para Unity. El costo: nodos ROS2 nativos
+    # fuera del contenedor no van a poder descubrir los de aca por DDS
+    # (el mapeo de puertos no alcanza para eso); para inspeccionar el
+    # grafo ROS2 desde afuera usar `docker exec fr5_ros2_sim ros2 ...`.
     ports:
       - "9090:9090"
-    # Para pasar argumentos del launch (ver tabla de parametros en
-    # src/an5_mock_sim/README.md), sobreescribir el comando, ej:
-    #   command: ["ros2", "launch", "an5_mock_sim", "sim.launch.py", "easing:=linear"]
+    environment:
+      - ROS_DOMAIN_ID=0
     command: ["ros2", "launch", "an5_mock_sim", "sim.launch.py"]
+
+  fr5-real:
+    build: .
+    image: fr5_ros2:latest
+    container_name: fr5_ros2_real
+    ports:
+      - "9090:9090"
+    environment:
+      - ROS_DOMAIN_ID=0
+    command: ["ros2", "launch", "an5_mock_sim", "real.launch.py"]
+    profiles: ["real"]

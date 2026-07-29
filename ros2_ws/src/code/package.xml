@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>TODO: Package description</description>
   <maintainer email="angel@todo.todo">angel</maintainer>
-  <license>Apache-2.0</license>
+  <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>frhal_msgs</depend>

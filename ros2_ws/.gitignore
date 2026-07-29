@@ -1,3 +1,4 @@
+# Artefactos de colcon/ROS2 (se regeneran con `colcon build`, no van al repo)
 build/
 install/
 log/
@@ -6,7 +7,3 @@ log/
 __pycache__/
 *.pyc
 *.egg-info/
-
-# Editor/IDE
-.vscode/
-.claude/
