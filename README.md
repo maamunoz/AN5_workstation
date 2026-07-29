@@ -93,8 +93,7 @@ Puntos clave:
 - Ver [`AN5_workstation/README.md`](AN5_workstation/README.md) para el detalle completo.
 
 ### ROS 2 (`ros2_ws/`)
-- Ubuntu 24.04 + ROS 2 **Jazzy** (probado), o Ubuntu 22.04 + **Humble** (compatible,
-  cambia solo el paquete apt de rosbridge).
+- Ubuntu 22.04 + ROS 2 **Humble** (probado)
 - Alternativa sin instalar ROS 2 en el host: **Docker** (`docker compose up --build`
   dentro de `ros2_ws/`), ver su README.
 - No requiere el robot físico para el modo simulado (`sim.launch.py`); el modo real
