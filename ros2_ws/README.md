@@ -7,10 +7,10 @@ ROS2 (`/FR_ROS_API_service`, `nonrt_state_data`, `/joint_states`,
 `current_joint_position`, `current_cartesian_position`), asi que Unity
 nunca necesita saber cual de las tres esta corriendo por debajo.
 
-## Requisitos (correr sin Docker)
+## Requisitos (nativo)
 
 Para clonar este repo en otro equipo y correr el modo sim o real de forma
-nativa (sin Docker):
+nativa:
 
 - Ubuntu 22.04 (u otra distro compatible) con **ROS 2 Humble** instalado
   (`ros-humble-ros-base` alcanza, no hace falta `desktop`).
