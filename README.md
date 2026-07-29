@@ -61,7 +61,7 @@ flowchart TB
     Unity <-->|"WebSocket JSON · puerto 9090"| Bridge["rosbridge_websocket"]
     Bridge <-->|traduce hacia/desde| Graph["Grafo ROS 2 (DDS)"]
 
-    Graph <-->|"input_cartesian_position → output_joint_position"| Matlab["MATLAB\nmatlab_ik_node (AN5_Matlab/inverse_kinematics.m)\n· proceso aparte, se levanta a mano\n· requiere correr en el mismo equipo/red ROS 2"]
+    Graph <-->|"input_cartesian_position → output_joint_position\n(DDS nativo, o TCP:9091 en modo Docker)"| Matlab["MATLAB\nmatlab_ik_node (AN5_Matlab/inverse_kinematics.m)\no inverse_kinematics_docker.m en modo Docker\n· proceso aparte, se levanta a mano\n· nativo: mismo equipo/red ROS 2 · Docker: matlab_ik_bridge"]
     Graph <-->|"api_command ← / → current_joint_position,\ncurrent_cartesian_position, setpoint_cartesian_position,\n/joint_states, nonrt_state_data"| Mock["ros2_ws: an5_mock_sim\nmock_cmd_server.py (nodo ROS 2 nativo)"]
     Graph -.->|"api_command → /FR_ROS_API_service\n(bloqueado en modo sim: XML-RPC inalcanzable)"| Real["ros2_ws: code\npublisher_subscriber.py → robot real"]
 ```
@@ -69,10 +69,9 @@ flowchart TB
 Puntos clave:
 
 - **Unity nunca se conecta directo a MATLAB.** Unity solo habla con
-  `rosbridge_websocket` (puerto 9090); MATLAB se conecta al grafo ROS 2 como nodo
-  nativo (DDS). Ambos comparten tópicos, no una conexión punto a punto — por eso
-  **MATLAB tiene que correr en el mismo equipo (o la misma red/dominio ROS 2)** que
-  `mock_cmd_server`/`rosbridge_websocket`, no en la máquina donde corre Unity.
+  `rosbridge_websocket` (puerto 9090); MATLAB se conecta al grafo ROS 2 (nativo por
+  DDS, o por TCP en modo Docker — ver tabla en [Requisitos → MATLAB](#matlab-an5_matlab)).
+  Ambos comparten tópicos, no una conexión punto a punto.
 - **La cinemática inversa la resuelve MATLAB**, no Unity: se evaluó moverla a Unity
   (`RobotKinematics.MgiAn5`, con límites articulares, colisión y reglas de seguridad
   portadas de `inverse_kinematics.m`) pero la solución de MATLAB resultó más confiable
@@ -104,13 +103,29 @@ Puntos clave:
 ### MATLAB (`AN5_Matlab/`)
 - MATLAB (probado con R2023b+) y Simulink para abrir `simulador_trayectorias_AN5.slx`
   y las interfaces App Designer (`Interfaz_Matlab.mlapp`, `Interfaz_Matlab_Simulacion.mlapp`).
-- `matlab_ik_node` (`inverse_kinematics.m`) resuelve la cinemática inversa y corre como
-  proceso aparte que se conecta al mismo grafo ROS 2 — no es un paquete ROS 2, hay que
-  levantarlo a mano desde MATLAB.
-- Tiene que correr en el mismo equipo (o red/dominio ROS 2) que `ros2_ws`. Trae reglas
-  de seguridad propias (caja de posición segura, banda de orientación prohibida en Rx
-  y restricción J4/J5) heredadas de otra celda de robot — pueden rechazar poses
-  legítimas de este proyecto; ver la nota en
+- `matlab_ik_node` resuelve la cinemática inversa y corre como proceso aparte que se
+  conecta al mismo grafo ROS 2 — no es un paquete ROS 2, hay que levantarlo a mano
+  desde MATLAB. **Qué script correr depende de cómo corre `ros2_ws`:**
+
+  | `ros2_ws` corre... | Script | Cómo se conecta |
+  |---|---|---|
+  | **Nativo** (ROS 2 instalado en el mismo equipo/red) | [`inverse_kinematics.m`](AN5_Matlab/inverse_kinematics.m) | Nodo ROS 2 nativo (`ros2node`/DDS) |
+  | **Docker** (Windows, Mac o Linux) | [`inverse_kinematics_docker.m`](AN5_Matlab/inverse_kinematics_docker.m) | `tcpclient` contra `matlab_ik_bridge` (puerto 9091) |
+
+  Motivo: en modo Docker, DDS no atraviesa el NAT de Docker Desktop (ver
+  [`ros2_ws/DOCKER.md`](ros2_ws/DOCKER.md#cinematica-inversa-con-matlab-windowsmac)),
+  así que `inverse_kinematics.m` nunca llega a descubrir el grafo ROS 2 del
+  contenedor. `inverse_kinematics_docker.m` evita el problema hablando por TCP en vez
+  de por DDS, pero solo cubre el intercambio de IK
+  (`input_cartesian_position → output_joint_position`) — no reemplaza el resto de
+  `inverse_kinematics.m` (ejecución de trayectorias por archivo local, control directo
+  del robot vía `/api_command`), que sigue asumiendo una instalación nativa de ROS 2
+  en el mismo equipo que MATLAB. **No corras los dos scripts a la vez** contra el
+  mismo grafo ROS 2: ambos publican en `output_joint_position` y compiten.
+- Corriendo en modo nativo, tiene que estar en el mismo equipo (o red/dominio ROS 2)
+  que `ros2_ws`. Trae reglas de seguridad propias (caja de posición segura, banda de
+  orientación prohibida en Rx y restricción J4/J5) heredadas de otra celda de robot —
+  pueden rechazar poses legítimas de este proyecto; ver la nota en
   [`ros2_ws/src/an5_mock_sim/README.md`](ros2_ws/src/an5_mock_sim/README.md).
 - Incluye su propia copia de `frcobot_description` (URDF + mallas) para visualizar el
   robot en MATLAB/Simulink; son los mismos modelos que usa Unity, versionados acá vía
@@ -149,7 +164,9 @@ colcon build --packages-select frhal_msgs code an5_mock_sim
 source install/setup.bash
 ros2 launch an5_mock_sim sim.launch.py
 
-# 3. (Opcional, para IK) levantar matlab_ik_node en el mismo equipo/red ROS 2
+# 3. (Opcional, para IK) levantar matlab_ik_node desde MATLAB: inverse_kinematics.m
+#    si ros2_ws corre nativo (mismo equipo/red ROS 2), o inverse_kinematics_docker.m
+#    si ros2_ws corre en Docker -- ver tabla en Requisitos > MATLAB.
 
 # 4. Abrir AN5_workstation/ en Unity y entrar en Play mode
 #    (se conecta solo a rosbridge_websocket:9090)

@@ -56,6 +56,21 @@ def generate_launch_description():
             "por coma 'j1,j2,j3,j4,j5,j6'. Dejar vacio ('') para arrancar "
             "en todos los joints en 0."))
 
+    matlab_bridge_enabled = DeclareLaunchArgument(
+        'matlab_bridge_enabled', default_value='false',
+        description=(
+            'Si es true, levanta matlab_ik_bridge (puente TCP en '
+            'matlab_bridge_port para inverse_kinematics_docker.m). Default '
+            'false porque colisiona con un matlab_ik_node nativo '
+            '(inverse_kinematics.m via DDS) publicando en el mismo topico '
+            'output_joint_position -- solo activar en modo Docker, donde '
+            'MATLAB no puede conectarse por DDS de todas formas (ver '
+            'ros2_ws/DOCKER.md).'))
+
+    matlab_bridge_port = DeclareLaunchArgument(
+        'matlab_bridge_port', default_value='9091',
+        description='Puerto TCP de matlab_ik_bridge.')
+
     rosbridge_launch = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
             PathJoinSubstitution([
@@ -86,13 +101,25 @@ def generate_launch_description():
         }],
     )
 
+    matlab_ik_bridge_node = Node(
+        package='an5_mock_sim',
+        executable='matlab_ik_bridge',
+        name='matlab_ik_bridge',
+        output='screen',
+        parameters=[{'port': LaunchConfiguration('matlab_bridge_port')}],
+        condition=IfCondition(LaunchConfiguration('matlab_bridge_enabled')),
+    )
+
     return LaunchDescription([
         include_publisher_subscriber,
         joint_states_rate_hz,
         easing,
         xmlrpc_mock_enabled,
         initial_joint_positions_deg,
+        matlab_bridge_enabled,
+        matlab_bridge_port,
         rosbridge_launch,
         publisher_subscriber_node,
         mock_cmd_server_node,
+        matlab_ik_bridge_node,
     ])

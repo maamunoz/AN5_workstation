@@ -12,9 +12,14 @@ services:
     # grafo ROS2 desde afuera usar `docker exec fr5_ros2_sim ros2 ...`.
     ports:
       - "9090:9090"
+      # matlab_ik_bridge: puente TCP para que MATLAB (Windows/Mac, fuera
+      # del contenedor) calcule la cinematica inversa sin necesitar
+      # descubrimiento DDS a traves del NAT de Docker Desktop -- ver
+      # ros2_ws/DOCKER.md y AN5_Matlab/inverse_kinematics_docker.m.
+      - "9091:9091"
     environment:
       - ROS_DOMAIN_ID=0
-    command: ["ros2", "launch", "an5_mock_sim", "sim.launch.py"]
+    command: ["ros2", "launch", "an5_mock_sim", "sim.launch.py", "matlab_bridge_enabled:=true"]
 
   fr5-real:
     build: .
@@ -22,7 +27,8 @@ services:
     container_name: fr5_ros2_real
     ports:
       - "9090:9090"
+      - "9091:9091"
     environment:
       - ROS_DOMAIN_ID=0
-    command: ["ros2", "launch", "an5_mock_sim", "real.launch.py"]
+    command: ["ros2", "launch", "an5_mock_sim", "real.launch.py", "matlab_bridge_enabled:=true"]
     profiles: ["real"]

@@ -31,6 +31,7 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction,
 )
+from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -65,6 +66,18 @@ def generate_launch_description():
             'hardcodeados en ROS_API.cpp (coinciden con el yaml de '
             'fabrica).'))
 
+    matlab_bridge_enabled = DeclareLaunchArgument(
+        'matlab_bridge_enabled', default_value='false',
+        description=(
+            'Si es true, levanta matlab_ik_bridge (puente TCP en '
+            'matlab_bridge_port para inverse_kinematics_docker.m). Solo '
+            'activar en modo Docker (ver ros2_ws/DOCKER.md); colisiona con '
+            'un matlab_ik_node nativo por DDS.'))
+
+    matlab_bridge_port = DeclareLaunchArgument(
+        'matlab_bridge_port', default_value='9091',
+        description='Puerto TCP de matlab_ik_bridge.')
+
     rosbridge_launch = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
             PathJoinSubstitution([
@@ -81,9 +94,21 @@ def generate_launch_description():
         output='screen',
     )
 
+    matlab_ik_bridge_node = Node(
+        package='an5_mock_sim',
+        executable='matlab_ik_bridge',
+        name='matlab_ik_bridge',
+        output='screen',
+        parameters=[{'port': LaunchConfiguration('matlab_bridge_port')}],
+        condition=IfCondition(LaunchConfiguration('matlab_bridge_enabled')),
+    )
+
     return LaunchDescription([
         fr_ros2_params_file,
+        matlab_bridge_enabled,
+        matlab_bridge_port,
         rosbridge_launch,
         OpaqueFunction(function=_make_ros2_cmd_server_node),
         publisher_subscriber_node,
+        matlab_ik_bridge_node,
     ])

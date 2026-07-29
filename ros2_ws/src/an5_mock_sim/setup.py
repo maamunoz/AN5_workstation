@@ -31,6 +31,7 @@ setup(
     entry_points={
         'console_scripts': [
             'mock_cmd_server = an5_mock_sim.mock_cmd_server:main',
+            'matlab_ik_bridge = an5_mock_sim.matlab_ik_bridge:main',
         ],
     },
 )
