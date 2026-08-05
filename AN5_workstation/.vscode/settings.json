@@ -60,5 +60,5 @@
         "/home/juanda/catkin_ws/devel/lib/python2.7/dist-packages",
         "/opt/ros/melodic/lib/python2.7/dist-packages"
     ],
-    "dotnet.defaultSolution": "Interfaz Unity AN5.slnx"
+    "dotnet.defaultSolution": "AN5_workstation.slnx"
 }

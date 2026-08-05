@@ -457,16 +457,24 @@ public class SecTrajController : MonoBehaviour
     private static string ShowFileDialogWindows(string initialDir)
     {
         // EnableVisualStyles lets WinForms render correctly in a redirected process.
-        // TopMost ensures the dialog appears above the Unity window.
+        // OpenFileDialog has no TopMost property of its own (only Form does) -- a
+        // previous version set "$d.TopMost = $true" directly on the dialog, which
+        // PowerShell accepted as a non-terminating error and printed to stdout ahead
+        // of the real Write-Output line. Since the C# side only read the FIRST stdout
+        // line (see below), it picked up that error text instead of the chosen file
+        // path on every single run, so the dialog opened and a file could be picked,
+        // but nothing ever loaded (confirmed via Player.log). The fix for "appear
+        // above the Unity window" is to give ShowDialog() a hidden TopMost owner Form
+        // instead, which IS a valid property there.
         string safeDir = initialDir.Replace("\\", "\\\\").Replace("'", "\\'");
         string psScript =
             "[System.Windows.Forms.Application]::EnableVisualStyles();" +
+            "$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false; StartPosition = 'CenterScreen'; Width = 0; Height = 0 };" +
             "$d = New-Object System.Windows.Forms.OpenFileDialog;" +
             "$d.Title = 'Select trajectory file';" +
             $"$d.InitialDirectory = [System.IO.Path]::GetFullPath('{safeDir}');" +
             "$d.Filter = 'Text files (*.txt)|*.txt|All files (*.*)|*.*';" +
-            "$d.TopMost = $true;" +
-            "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName }";
+            "if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName }";
         string psArgs = $"-NoProfile -Sta -Command \"Add-Type -AssemblyName System.Windows.Forms; {psScript}\"";
 
         UnityEngine.Debug.Log($"[SecTrajController] Launching PowerShell dialog. InitialDir={initialDir}");
@@ -478,7 +486,17 @@ public class SecTrajController : MonoBehaviour
         };
         using (var proc = System.Diagnostics.Process.Start(psi))
         {
-            string result = proc?.StandardOutput.ReadLine() ?? "";
+            // Read every stdout line (not just the first -- a stray non-terminating
+            // error from the script would otherwise shadow the real result the same
+            // way the TopMost bug above did) and take the last non-empty one, which
+            // is always the Write-Output'd file path when a file was chosen.
+            string result = "";
+            string line;
+            while (proc != null && (line = proc.StandardOutput.ReadLine()) != null)
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                    result = line;
+            }
             proc?.WaitForExit();
             UnityEngine.Debug.Log($"[SecTrajController] PowerShell exited with code {proc?.ExitCode}. chosen='{result}'");
             return result;
