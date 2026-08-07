@@ -152,5 +152,29 @@ namespace AN5.Measurement
 
             onResult?.Invoke(false);
         }
+
+        /// Espera, acotado por `extraTimeoutSeconds`, a que el driver reporte el
+        /// movimiento como terminado vía nonrt_state_data/robot_motion_done (ver
+        /// RobotMotionDoneSubscriber). Complementa a WaitForJointArrival: esa espera
+        /// solo mira si la posición YA ENTRÓ en tolerancia, que puede pasar antes de
+        /// que el controlador termine de asentar del todo -- ver el comentario de
+        /// clase de P6JointAccuracy sobre el error medio de 0,128° encontrado contra
+        /// el emulador. Si la escena no tiene RobotMotionDoneSubscriber, o todavía no
+        /// recibió ningún mensaje (driver que no publica esto, o nodo caído), vuelve
+        /// de inmediato sin bloquear: es un refinamiento de timing, no un requisito.
+        protected IEnumerator WaitForMotionDone(MeasurementSession session, float extraTimeoutSeconds)
+        {
+            var sub = session.MotionDoneSubscriber;
+            if (sub == null || !sub.HasReceivedMessage)
+                yield break;
+
+            float elapsed = 0f;
+            var wait = new WaitForSeconds(0.05f);
+            while (elapsed < extraTimeoutSeconds && !sub.IsMotionDone)
+            {
+                yield return wait;
+                elapsed += 0.05f;
+            }
+        }
     }
 }

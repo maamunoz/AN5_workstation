@@ -121,6 +121,12 @@ namespace AN5.Measurement
         public JointPositionSubscriber JointSubscriber { get; private set; }
         public CartesianPositionSubscriber CartesianSubscriber { get; private set; }
 
+        /// Opcional: null si la escena no tiene el componente, o si el driver/emulador
+        /// no está publicando nonrt_state_data. Quien lo use debe chequear ambos casos
+        /// (ver RobotMotionDoneSubscriber.HasReceivedMessage) -- no es un requisito
+        /// para que las pruebas corran, solo un refinamiento de timing (ver P6).
+        public RobotMotionDoneSubscriber MotionDoneSubscriber { get; private set; }
+
         public RosSocket Socket
         {
             get { return Connector != null ? Connector.RosSocket : null; }
@@ -171,6 +177,7 @@ namespace AN5.Measurement
             CommandSender = FindObjectOfType<Ros2CommandSender>();
             JointSubscriber = FindObjectOfType<JointPositionSubscriber>();
             CartesianSubscriber = FindObjectOfType<CartesianPositionSubscriber>();
+            MotionDoneSubscriber = FindObjectOfType<RobotMotionDoneSubscriber>();
 
             if (Connector == null)
                 Debug.LogError("[MeasurementSession] No se encontró RosConnector en la escena.");

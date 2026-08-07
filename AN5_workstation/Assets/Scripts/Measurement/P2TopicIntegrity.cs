@@ -60,7 +60,7 @@ namespace AN5.Measurement
             new Expected("joint_states",               "sensor_msgs/JointState", false,
                 "lo agrega el emulador para consumidores ROS estándar"),
             new Expected("nonrt_state_data",           "frhal_msgs/FRState", false,
-                "estado del driver, no lo consume Unity"),
+                "robot_motion_done, si RobotMotionDoneSubscriber está en la escena (P6)"),
             new Expected("input_cartesian_position",   "std_msgs/String", false,
                 "requiere matlab_ik_node levantado"),
             new Expected("output_joint_position",      "std_msgs/String", false,

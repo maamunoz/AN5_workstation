@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using RosSharp;
 
@@ -30,6 +31,12 @@ namespace AN5.Measurement
     ///   - La rama (b) pasa por JointStateWriter, que aplica desfases fijos de ±90° e
     ///     inversión de signo por articulación (:107-141) en vez de usar el eje del
     ///     URDF.
+    ///   - Medido empíricamente al generar las poses de referencia de abajo: para las
+    ///     mismas 10 configuraciones articulares, la tabla DH da una Z mundial
+    ///     sistemáticamente ~167 mm distinta de la real (RealRobotForwardKinematics.cs) —
+    ///     más que los 65 mm de la sola herramienta, así que hay otra diferencia de
+    ///     convención de ejes sumándose. Es un desplazamiento constante, no depende de
+    ///     la configuración articular probada.
     ///
     /// INTERPRETACIÓN. Si la divergencia entre emulador y robot resulta despreciable,
     /// se sostiene que una trayectoria registrada en simulación es válida sobre el
@@ -39,25 +46,96 @@ namespace AN5.Measurement
     /// La comparación emulador contra robot exige DOS sesiones (una en C1/C3 y otra en
     /// C2/C4) que después se aparean por identificador de configuración: en una misma
     /// sesión solo hay un destino publicando.
+    ///
+    /// SEGURIDAD FÍSICA. Esta prueba mueve el robot real (C2/C4). Las 10 configuraciones
+    /// de referencia de abajo NO son arbitrarias: se resolvieron por cinemática inversa
+    /// numérica contra la geometría real del URDF (mismo modelo que
+    /// RealRobotForwardKinematics.cs) para que la pose cartesiana resultante cumpla
+    /// SIEMPRE, con margen: Z ≥ 140 mm (piso pedido: 110 mm), fuera de la zona trasera
+    /// X∈[-350,350]∧Y<-300 mm (piso pedido: Y≥-190 mm), pinza apuntando derecho hacia
+    /// abajo (rx≈180°, ry≈0°, la convención que ya usan las trayectorias validadas de
+    /// routines/), j2 dentro de [-145°,-45°] (restricción operativa de esta celda, más
+    /// estricta que el límite mecánico real del motor), Y j1 FUERA de [-120°,-30°]
+    /// (zona prohibida por la pared detrás del robot -- ver
+    /// WorkspaceSafety.J2AllowedRangeDeg/J1ForbiddenRangeDeg).
+    ///
+    /// EL ORDEN DE LA LISTA TAMBIÉN ES DELIBERADO, no solo cada valor por separado.
+    /// La primera versión de estas 10 configuraciones validaba cada una como endpoint
+    /// individual y daba por seguro el conjunto -- pero P9 no salta de una a otra, las
+    /// alcanza con MoveJ (interpolación ARTICULAR punto a punto, línea recta en espacio
+    /// de juntas, NO en espacio cartesiano). Dos endpoints perfectamente seguros pueden
+    /// tener, en el medio de ese camino, una junta cruzando la zona prohibida sin que
+    /// ninguno de los dos extremos lo delate -- exactamente lo que pasaba entre estas
+    /// configuraciones cuando estaban en su orden "natural": dos transiciones cruzaban
+    /// de lleno J1ForbiddenRangeDeg a mitad de movimiento. El orden de abajo visita los
+    /// puntos por cercanía en espacio articular (recorrido tipo vecino-más-cercano)
+    /// para que cada paso sea chico, y CADA UNA de las 9 transiciones se verificó por
+    /// separado (muestreo denso de la interpolación, no solo los extremos) contra los
+    /// mismos límites. Reordenar esta lista a mano invalida esa verificación.
+    ///
+    /// EXCEPCIONES ACEPTADAS Y DOCUMENTADAS: dos transiciones apartan la pinza de "hacia
+    /// abajo" a mitad de camino, ninguna de las dos por elección sino porque las ramas de
+    /// IK disponibles no dejaron otra opción sin violar j1/j2:
+    ///   - 8ª→9ª (hacia 150,560,140mm): queda de costado (rx≈90°) en, aprox.,
+    ///     x∈[-350,150], y∈[560,630], z∈[130,250]mm. Consecuencia de que ese punto solo
+    ///     tiene solución con la muñeca en la rama j5=-90°, distinta de los otros 9
+    ///     (todos j5=+90°).
+    ///   - 9ª→10ª (desde ese mismo punto hacia -560,-120,260mm): más severa -- a mitad de
+    ///     camino DIRECTO la pinza queda completamente invertida (180°, apuntando hacia
+    ///     arriba) y el brazo sube hasta Z≈1077mm. No se encontró una rama de IK para el
+    ///     punto 10 que evite esto (se probó, entre otras, sembrando el solver con los
+    ///     propios ángulos del punto 9: solo reconverge a la misma rama lejana).
+    /// Ninguna de las dos baja de Z=110mm ni entra a la zona trasera en ningún momento
+    /// (verificado con muestreo denso). La de 9ª→10ª sube mucho más que la otra, pero se
+    /// confirmó que ni siquiera al límite de extensión el brazo llega al techo/estructura
+    /// de esta celda, así que Z≈1077mm no es un riesgo físico distinto del resto
+    /// -- se acepta el giro de la muñeca en tránsito en ambas transiciones porque los dos
+    /// riesgos concretos que motivaron todo esto (mesa, pared) siguen cubiertos. Si en tu
+    /// celda cambia el entorno (algo nuevo por encima o a los costados del brazo) y una
+    /// pinza de costado o invertida podría chocar contra eso, revisá esto antes de correr
+    /// la prueba con el robot físico.
+    ///
+    /// Además, ANTES de comandar cada configuración, Run() valida en tiempo de ejecución
+    /// tanto el DESTINO (WorkspaceSafety.IsSafe() + IsJointConfigurationSafe()) como el
+    /// CAMINO desde la configuración anterior (WorkspaceSafety.IsPathSafe(), con el mismo
+    /// muestreo denso que se usó para verificar esta lista) contra los límites de Z,
+    /// zona trasera, j1 y j2 -- NO contra la orientación de la pinza en tránsito (ver
+    /// más arriba) ni contra ningún límite de altura máxima (esta celda no tiene uno: el
+    /// brazo no alcanza el techo ni a extensión completa). Si el camino directo violara
+    /// alguno de esos cuatro límites, Run() prueba automáticamente pasar por
+    /// `safetyWaypoint` (partir el movimiento grande en dos chicos, cada uno verificado
+    /// por separado) antes de rechazar la configuración -- una red de seguridad general
+    /// para cualquier reordenamiento futuro que sí introduzca ese tipo de salto, aunque
+    /// hoy ninguna de las 9 transiciones lo necesite. El paso por `safetyWaypoint`, si
+    /// llegara a ocurrir, NO se registra en el CSV: no es una configuración de
+    /// referencia, solo un punto de tránsito seguro.
     public class P9KinematicConsistency : MeasurementTest
     {
         [Header("Configuraciones de referencia (grados)")]
         [Tooltip("El plan pide al menos 8, con varias articulaciones simultáneamente " +
                  "fuera de cero y alguna cerca de los límites. La pose de origen se " +
                  "evita a propósito: ahí las diferencias de convención tienden a " +
-                 "cancelarse y la prueba no detectaría nada.")]
+                 "cancelarse y la prueba no detectaría nada. Cada valor Y EL ORDEN DE " +
+                 "LA LISTA están resueltos por IK numérica para que tanto los destinos " +
+                 "como las transiciones entre ellos sean seguros -- ver el comentario " +
+                 "de clase antes de reordenar o tocar esta lista a mano, y confirmar " +
+                 "cualquier valor nuevo contra WorkspaceSafety (destino Y camino) antes " +
+                 "de correr con el robot físico.")]
         public List<Vector6> referenceConfigurations = new List<Vector6>
         {
-            new Vector6(  30f,  -60f,   60f,  -90f,   60f,   45f),
-            new Vector6( -45f,  -80f,  100f, -110f,  -70f,  -60f),
-            new Vector6(  90f,  -45f,   45f,  -60f,   90f,  120f),
-            new Vector6(-120f, -100f,  120f,  -80f,   45f,  -90f),
-            new Vector6(  15f, -120f,   90f,  -45f,  120f,   30f),
-            new Vector6( 160f,  -70f,   70f, -100f,  160f,  150f), // cerca de límites
-            new Vector6(-160f,  -50f,  140f, -140f, -160f, -150f), // cerca de límites
-            new Vector6(  60f,  -30f,   30f, -150f,   30f,   75f),
-            new Vector6( -75f, -140f,  110f,  -70f, -100f,  100f),
-            new Vector6(  45f,  -95f,   85f,  -95f,   85f,  -45f),
+            // Orden por cercanía articular (vecino más cercano), no el orden en que se
+            // resolvieron -- ver el comentario de clase.
+            // j1,      j2,       j3,       j4,       j5,     j6       // x,y,z_mm ~ yaw°
+            new Vector6(  35.773f, -111.534f, -117.293f,  -41.173f,  90.000f,  -69.227f), // 1: 480,220,150 ~15
+            new Vector6(  -5.217f, -105.019f, -111.035f,  -53.946f,  90.000f,  -35.217f), // 2: 520,-150,230 ~-60
+            new Vector6( -11.545f,  -84.562f, -106.396f,  -79.042f,  90.000f,  -81.545f), // 3: 420,-190,400 ~-20
+            new Vector6(  13.590f, -103.032f,  -74.944f,  -92.023f,  90.000f, -121.410f), // 4: 600,40,480 ~45
+            new Vector6(  72.337f,  -98.882f, -102.172f,  -68.946f,  90.000f, -107.663f), // 5: 260,480,330 ~90
+            new Vector6( 132.397f, -112.380f, -109.753f,  -47.868f,  90.000f, -107.603f), // 6: -300,480,180 ~150
+            new Vector6( 162.337f,  -95.817f,  -92.159f,  -82.024f,  90.000f, -147.663f), // 7: -480,260,420 ~-140
+            new Vector6( 146.536f, -108.082f, -103.354f,  -58.565f,  90.000f,  -43.464f), // 8: -420,400,250 ~100
+            new Vector6(  85.148f, -139.769f,  -68.403f, -241.828f, -90.000f,    5.148f), // 9: 150,560,140 ~170 (rama j5=-90, ver EXCEPCIÓN)
+            new Vector6(   1.825f,  -73.512f,  103.850f, -120.339f, -90.000f,  -98.175f), // 10: -560,-120,260 ~-170
         };
 
         [Header("Movimiento")]
@@ -67,6 +145,15 @@ namespace AN5.Measurement
         [Tooltip("Espera adicional tras confirmar llegada, para que el estado " +
                  "publicado y el modelo terminen de asentarse antes de muestrear.")]
         public float settleSeconds = 1.5f;
+
+        [Tooltip("Punto de paso de seguridad. Cuando el camino DIRECTO entre dos " +
+                 "configuraciones consecutivas no pasa WorkspaceSafety.IsPathSafe(), " +
+                 "Run() prueba ir primero acá (verificando también ambos tramos por " +
+                 "separado) antes de rechazar la configuración de destino. Default: la " +
+                 "misma pose base que ya usa el resto del proyecto (SecTrajController, " +
+                 "P6) -- NO tiene la pinza hacia abajo, así que solo sirve como tránsito, " +
+                 "nunca se registra como configuración de referencia.")]
+        public Vector6 safetyWaypoint = new Vector6(0f, -90f, 90f, -90f, 90f, 0f);
 
         [Header("Jerarquía de escena")]
         [Tooltip("Eslabón base del robot. Se resuelve por nombre si queda vacío.")]
@@ -143,16 +230,125 @@ namespace AN5.Measurement
             var oriErrDhVsHier = new List<double>();
 
             int measured = 0;
+            int rejectedForSafety = 0;
+            int routedThroughWaypoint = 0;
+
+            // Punto de partida real del robot, para poder validar también el
+            // camino hacia la PRIMERA configuración (no solo entre consecutivas).
+            // Si todavía no hay una lectura válida, se arranca sin ese primer
+            // chequeo de camino en vez de bloquear la prueba entera por algo que
+            // no es culpa de ninguna configuración de referencia.
+            float[] previousCommanded = session.JointSubscriber.GetLastKnownPositions();
 
             for (int c = 0; c < referenceConfigurations.Count; c++)
             {
                 float[] commanded = referenceConfigurations[c].ToArray();
                 SetStatus($"configuración {c + 1}/{referenceConfigurations.Count}");
 
+                // Chequeo de seguridad ANTES de mover el robot físico -- tres
+                // validaciones independientes, ninguna reemplaza a las otras:
+                //   1) espacio articular del DESTINO: IsJointConfigurationSafe()
+                //      (j1/j2, restricciones operativas de esta celda, más
+                //      estrictas que los límites mecánicos reales del motor).
+                //   2) pose cartesiana del DESTINO: IsSafe(), vía
+                //      RealRobotForwardKinematics (geometría real del URDF, NUNCA
+                //      LocalForwardKinematics -- esa tabla DH difiere ~167 mm en Z
+                //      para las mismas juntas, ver el comentario de clase).
+                //   3) el CAMINO hasta ahí (IsPathSafe): dos destinos válidos
+                //      pueden tener, en el medio del movimiento articular
+                //      interpolado, algo que ninguno de los dos extremos delata
+                //      -- es justo lo que motivó todo esto (ver comentario de
+                //      clase). Si el camino directo falla, se prueba pasar por
+                //      safetyWaypoint antes de rechazar.
+                // Esto es la red de seguridad si alguien edita referenceConfigurations
+                // en el Inspector sin volver a correr el solver de IK.
+                bool jointsSafe = WorkspaceSafety.IsJointConfigurationSafe(commanded, out string jointUnsafeReason);
+                float[] predictedPose = RealRobotForwardKinematics.CartesianFromJointsDeg(commanded);
+                bool poseSafe = WorkspaceSafety.IsSafe(predictedPose, out string poseUnsafeReason);
+
+                if (!jointsSafe || !poseSafe)
+                {
+                    string unsafeReason = string.Join("; ", new[] { jointUnsafeReason, poseUnsafeReason }
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    Debug.LogError($"[P9] Configuración {c + 1} RECHAZADA por seguridad, " +
+                                   $"no se comanda al robot: {unsafeReason}");
+                    rejectedForSafety++;
+                    poses.WriteRow(c, "rechazada_por_seguridad", middlewareSource,
+                        commanded[0], commanded[1], commanded[2],
+                        commanded[3], commanded[4], commanded[5],
+                        null, null, null, null, null, null,
+                        predictedPose[0], predictedPose[1], predictedPose[2],
+                        predictedPose[3], predictedPose[4], predictedPose[5], false);
+                    continue;
+                }
+
+                // Chequeo de CAMINO, con repliegue a un tránsito por safetyWaypoint.
+                bool viaWaypoint = false;
+                if (previousCommanded != null)
+                {
+                    bool directPathSafe = WorkspaceSafety.IsPathSafe(previousCommanded, commanded, out string directPathReason);
+                    if (!directPathSafe)
+                    {
+                        float[] waypoint = safetyWaypoint.ToArray();
+                        bool waypointItselfSafe = WorkspaceSafety.IsJointConfigurationSafe(waypoint, out _) &&
+                            WorkspaceSafety.IsSafe(RealRobotForwardKinematics.CartesianFromJointsDeg(waypoint), out _);
+                        // IsPathSafe se llama SIEMPRE (no encadenado con && a
+                        // waypointItselfSafe): un out declarado dentro de un && con
+                        // cortocircuito queda sin asignar si el lado izquierdo ya dio
+                        // false, y leg1Reason/leg2Reason hacen falta más abajo pase lo
+                        // que pase.
+                        bool leg1PathSafe = WorkspaceSafety.IsPathSafe(previousCommanded, waypoint, out string leg1Reason);
+                        bool leg2PathSafe = WorkspaceSafety.IsPathSafe(waypoint, commanded, out string leg2Reason);
+                        bool leg1Safe = waypointItselfSafe && leg1PathSafe;
+                        bool leg2Safe = waypointItselfSafe && leg2PathSafe;
+
+                        if (leg1Safe && leg2Safe)
+                        {
+                            Debug.LogWarning($"[P9] Configuración {c + 1}: camino directo inseguro " +
+                                             $"({directPathReason}); pasando por safetyWaypoint.");
+                            viaWaypoint = true;
+                        }
+                        else
+                        {
+                            string combined = string.Join("; ", new[] { directPathReason, leg1Reason, leg2Reason }
+                                .Where(s => !string.IsNullOrEmpty(s)));
+                            Debug.LogError($"[P9] Configuración {c + 1} RECHAZADA por seguridad " +
+                                           $"(camino, ni directo ni vía safetyWaypoint son seguros), " +
+                                           $"no se comanda al robot: {combined}");
+                            rejectedForSafety++;
+                            poses.WriteRow(c, "rechazada_por_seguridad_camino", middlewareSource,
+                                commanded[0], commanded[1], commanded[2],
+                                commanded[3], commanded[4], commanded[5],
+                                null, null, null, null, null, null,
+                                predictedPose[0], predictedPose[1], predictedPose[2],
+                                predictedPose[3], predictedPose[4], predictedPose[5], false);
+                            continue;
+                        }
+                    }
+                }
+
+                if (viaWaypoint)
+                {
+                    routedThroughWaypoint++;
+                    bool waypointArrived = false;
+                    yield return StartCoroutine(MoveToJointConfiguration(
+                        session, safetyWaypoint.ToArray(), speedPct, arrivalToleranceDeg,
+                        arrivalTimeoutSeconds, ok => waypointArrived = ok));
+                    if (!waypointArrived)
+                        Debug.LogWarning($"[P9] No se confirmó la llegada al safetyWaypoint antes " +
+                                         $"de la configuración {c + 1}; se continúa igual.");
+                }
+
                 bool arrived = false;
                 yield return StartCoroutine(MoveToJointConfiguration(
                     session, commanded, speedPct, arrivalToleranceDeg,
                     arrivalTimeoutSeconds, ok => arrived = ok));
+
+                // Se haya confirmado la llegada o no, el robot ya recibió el MoveJ y
+                // terminó su intento en (aprox.) `commanded` -- es el punto de partida
+                // real para el chequeo de camino de la PRÓXIMA configuración, así que
+                // se actualiza acá, antes de cualquiera de los dos `continue` de abajo.
+                previousCommanded = commanded;
 
                 if (!arrived)
                 {
@@ -216,6 +412,8 @@ namespace AN5.Measurement
             summary.WriteRow("destino", middlewareSource);
             summary.WriteRow("configuraciones_solicitadas", referenceConfigurations.Count);
             summary.WriteRow("configuraciones_medidas", measured);
+            summary.WriteRow("configuraciones_rechazadas_por_seguridad", rejectedForSafety);
+            summary.WriteRow("transiciones_ruteadas_por_safetyWaypoint", routedThroughWaypoint);
             summary.WriteRow("jerarquia_disponible", hierarchyAvailable);
             summary.WriteRow("jerarquia_extremo_usado", toolResolved);
 
@@ -230,10 +428,12 @@ namespace AN5.Measurement
 
             bool ok2 = measured > 0;
             var st = Stats.From(posErrDhVsMw);
+            string safetyNote = (rejectedForSafety > 0 ? $" ({rejectedForSafety} rechazada(s) por seguridad)" : "") +
+                (routedThroughWaypoint > 0 ? $" ({routedThroughWaypoint} ruteada(s) por safetyWaypoint)" : "");
             Finish(ok2, ok2
                 ? $"{measured} configuraciones; DH vs middleware: mediana " +
-                  $"{st.Median:F2} mm, máx {st.Max:F2} mm"
-                : "ninguna configuración alcanzada");
+                  $"{st.Median:F2} mm, máx {st.Max:F2} mm{safetyNote}"
+                : $"ninguna configuración alcanzada{safetyNote}");
         }
 
         private static void EmitPairSummary(CsvWriter csv, string pair,
