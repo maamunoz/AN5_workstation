@@ -1,8 +1,13 @@
 # Arnés de mediciones — plan experimental SENIE
 
 Instrumentación para ejecutar las pruebas P1–P10 sobre la plataforma AN5, tomando los
-datos desde Unity. **No forma parte de la aplicación**: hay que agregar los componentes
-a mano en la escena, y el nodo sonda de ROS 2 está apagado por defecto.
+datos desde Unity. **No forma parte de la aplicación**: vive en esta rama
+(`measurement-harness-senie`), pensada específicamente para bajar y evaluar sin fricción.
+
+> **En esta rama el nodo sonda de ROS 2 arranca activo por defecto** — alcanza con
+> `ros2 launch ... sim.launch.py` sin argumentos extra. En `main` el default es `false`
+> (ahí no forma parte de la operación normal y hay que pedirlo a propósito). Del lado de
+> Unity sí hay un paso manual inevitable: agregar los componentes a la escena (sección 2).
 
 ---
 
@@ -15,11 +20,14 @@ cd ros2_ws
 colcon build --packages-select an5_mock_sim
 source install/setup.bash
 
-# Emulador (C1/C3)
-ros2 launch an5_mock_sim sim.launch.py measurement_probe_enabled:=true
+# Emulador (C1/C3) — la sonda ya arranca sola en esta rama
+ros2 launch an5_mock_sim sim.launch.py
 
-# Robot físico (C2/C4)
-ros2 launch an5_mock_sim real.launch.py measurement_probe_enabled:=true
+# Robot físico (C2/C4) — ídem
+ros2 launch an5_mock_sim real.launch.py
+
+# Para desactivarla puntualmente (p. ej. para correr la plataforma sin instrumentar):
+ros2 launch an5_mock_sim sim.launch.py measurement_probe_enabled:=false
 ```
 
 Comprobación rápida de que la sonda está viva:
@@ -238,7 +246,7 @@ El arnés es aditivo salvo en un archivo:
     escucha.
 
 - **`ros2_ws/src/an5_mock_sim/`** — nodo `measurement_probe.py` nuevo, entrada en
-  `setup.py`, y el argumento `measurement_probe_enabled` (por defecto `false`) en ambos
-  launch.
+  `setup.py`, y el argumento `measurement_probe_enabled` en ambos launch (por defecto
+  `true` **en esta rama**; `false` en `main`).
 
 Ningún subscriptor ni el `RosConnector` fueron modificados.

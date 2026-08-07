@@ -96,10 +96,16 @@ namespace AN5.Measurement
             if (!probeAlive)
             {
                 usingProbeNode = false;
+                // En esta rama measurement_probe_enabled ya viene en true por defecto
+                // (ver sim.launch.py/real.launch.py); si no responde igual, lo más
+                // probable es que no se haya levantado el launch, que corra un
+                // paquete an5_mock_sim viejo sin recompilar, o que alguien lo haya
+                // desactivado a mano con measurement_probe_enabled:=false.
                 Debug.LogWarning("[P4] measurement_probe no responde. Repliegue a lazo " +
                                  "propio por rosbridge (sin descomposición en tramos). " +
-                                 "Levantá el launch con measurement_probe_enabled:=true " +
-                                 "para la medición completa.");
+                                 "Verificá que el launch esté corriendo con " +
+                                 "measurement_probe_enabled:=true (default en esta rama) " +
+                                 "y que an5_mock_sim esté recompilado.");
                 socket.Unsubscribe(pongSubId);
                 pongSubId = null;
 

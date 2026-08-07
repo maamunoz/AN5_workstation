@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Nodo sonda para las mediciones de desempeno de la plataforma.
 
-Existe SOLO para instrumentar el sistema durante las pruebas del articulo;
-esta apagado por defecto en los dos launch (measurement_probe_enabled:=true
-para activarlo) y no participa de la operacion normal del robot ni del mock.
+Existe SOLO para instrumentar el sistema durante las pruebas del articulo y
+no participa de la operacion normal del robot ni del mock. Lo gobierna el
+argumento de launch measurement_probe_enabled: en la rama de evaluacion
+(measurement-harness-senie) el default es true, para que "ros2 launch" sin
+argumentos extra alcance al bajar la rama y probar; en main el default es
+false, y hay que pedirlo a proposito.
 
 Cubre dos huecos que Unity no puede resolver por su cuenta:
 

@@ -72,13 +72,18 @@ def generate_launch_description():
         description='Puerto TCP de matlab_ik_bridge.')
 
     measurement_probe_enabled = DeclareLaunchArgument(
-        'measurement_probe_enabled', default_value='false',
+        'measurement_probe_enabled', default_value='true',
         description=(
             'Si es true, levanta measurement_probe: eco probe/ping -> '
             'probe/pong y contador probe/seq, usados por el arnes de '
             'mediciones de Unity para medir ida y vuelta y perdida de '
-            'mensajes. Default false: solo sirve para instrumentar las '
-            'pruebas, no forma parte de la operacion normal.'))
+            'mensajes. Default true EN ESTA RAMA de evaluacion (rama '
+            'measurement-harness-senie), para que alcance con "ros2 launch" '
+            'sin argumentos extra al bajar la rama y probar. En main sigue '
+            'siendo false: ahi no forma parte de la operacion normal y hay '
+            'que pedirlo a proposito con measurement_probe_enabled:=true. '
+            'Para desactivarlo puntualmente en esta rama: '
+            'measurement_probe_enabled:=false.'))
 
     measurement_probe_seq_rate_hz = DeclareLaunchArgument(
         'measurement_probe_seq_rate_hz', default_value='50.0',
