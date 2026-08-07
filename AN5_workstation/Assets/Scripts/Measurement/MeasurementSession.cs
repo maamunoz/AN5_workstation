@@ -74,6 +74,21 @@ namespace AN5.Measurement
         [Tooltip("Tecla que muestra u oculta el panel en pantalla.")]
         public KeyCode togglePanelKey = KeyCode.F9;
 
+        [Header("Posición del panel en pantalla")]
+        [Tooltip("Borde izquierdo del panel, como fracción del ancho de pantalla " +
+                 "(0 = pegado a la izquierda, 0.5 = arranca en el centro y se extiende " +
+                 "hacia la derecha, 1 = pegado a la derecha). Default 0.5 para no " +
+                 "superponerse con la UI de la escena, que ocupa el costado izquierdo.")]
+        [Range(0f, 1f)]
+        public float panelAnchorX = 0.5f;
+
+        [Tooltip("Borde superior del panel, como fracción del alto de pantalla.")]
+        [Range(0f, 1f)]
+        public float panelAnchorY = 0f;
+
+        [Tooltip("Ancho del panel en píxeles.")]
+        public float panelWidth = 430f;
+
         // --- Estado de la sesión ---
         public string RunDirectory { get; private set; }
         public bool IsRunning { get; private set; }
@@ -388,9 +403,13 @@ namespace AN5.Measurement
         {
             if (!_panelVisible) return;
 
-            const float w = 430f;
+            float w = panelWidth;
             float h = Mathf.Min(Screen.height - 20f, 180f + _tests.Count * 46f);
-            GUILayout.BeginArea(new Rect(10, 10, w, h), GUI.skin.box);
+            // Clamp para que un anchor cercano a 1 (o una pantalla angosta) no empuje
+            // el panel fuera del área visible en vez de simplemente pegarlo al borde.
+            float x = Mathf.Clamp(Screen.width * panelAnchorX, 10f, Screen.width - w - 10f);
+            float y = Mathf.Clamp(Screen.height * panelAnchorY + 10f, 10f, Screen.height - h - 10f);
+            GUILayout.BeginArea(new Rect(x, y, w, h), GUI.skin.box);
 
             GUILayout.Label($"<b>Arnés de mediciones — {ShortConfigLabel()} / {platformLabel}</b>",
                 new GUIStyle(GUI.skin.label) { richText = true });
