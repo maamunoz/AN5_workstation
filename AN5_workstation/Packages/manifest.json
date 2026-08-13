@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.ivanmurzak.unity.mcp": "0.87.0",
     "com.unity.adaptiveperformance": "6.0.0",
     "com.unity.ai.navigation": "2.0.12",
     "com.unity.feature.development": "1.0.2",
