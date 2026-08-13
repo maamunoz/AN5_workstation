@@ -8,6 +8,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/AN5_sim.unity
     guid: 4c896363ca6414e409e7d1ef4f457f1a
+  - enabled: 1
+    path: Assets/Scenes/Quest_test_arnes.unity
+    guid: c84865c42020860ad802961c81f8d9a3
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: bcbc2a00af771654ebd6c1ebcff35f1f, type: 2}
     com.unity.adaptivePerformance.basic.provider_settings: {fileID: 11400000, guid: be89e69ee8314db42a4bc86bc46cbef8, type: 2}
