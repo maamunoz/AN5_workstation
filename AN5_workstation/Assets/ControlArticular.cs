@@ -550,6 +550,18 @@ public class ControlArticular : MonoBehaviour
         // Mientras se ejecuta la trayectoria, refrescar el modelo fr5 desde ROS2 cada 100ms
         jointPositionSubscriber.StartLiveTracking(0.1f);
 
+        // isArticularModeActive se puso en true en cuanto el usuario arrastró el
+        // primer slider (ver OnSliderValueChanged), para que los mensajes de ROS2 no
+        // le pisaran el valor a mitad de arrastre -- ahí el robot todavía no se ha
+        // movido. Pero solo se limpiaba al final de este método, después de mandar
+        // TODOS los puntos: mientras la trayectoria se ejecutaba, con el usuario ya
+        // sin tocar nada, UpdateInitialJointPositions seguía descartando cada
+        // posición que llegaba y los sliders se quedaban clavados donde los soltó,
+        // sin seguir la posición real de la articulación. Se limpia acá, al arrancar
+        // el envío, para que los sliders vuelvan a seguir la posición en vivo durante
+        // toda la ejecución -- igual que ya hace el modelo 3D vía StartLiveTracking.
+        isArticularModeActive = false;
+
         // Enviar comandos de preparación antes de los JNTPoint()
         ros2CommandSender.SendCommand("DragTeachSwitch(0)");
         Debug.Log("Enviado: DragTeachSwitch(0)");

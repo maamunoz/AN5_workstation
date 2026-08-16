@@ -23,7 +23,28 @@ using UnityEngine.UI;
 public class TrajectoryFileList : MonoBehaviour
 {
     const float k_PanelWidth  = 480f;
-    const float k_RowHeight   = 52f;
+    // Tres rondas bajando este número (52 -> 32 -> 20 -> 15) sin que la fila se viera
+    // más chica: el motivo real no era el valor, era que rootLayout/rowsLayout tenían
+    // childControlHeight=false, así que LayoutElement.preferredHeight -- lo único que
+    // se estaba tocando en cada ronda -- nunca se llegaba a aplicar. Cada fila se
+    // quedaba en 100, el alto por defecto de un RectTransform nuevo de Unity, sin
+    // importar qué valor tuviera preferredHeight. Con childControlHeight=true (ver
+    // Create()) esto por fin manda de verdad; 15 alcanza de sobra para el texto a
+    // k_RowFontSize.
+    const float k_RowHeight   = 15f;
+    const float k_RowSpacing  = 1f;
+    const float k_PanelPadding = 5f;
+    // La cabecera (título + ⟳/✕) necesita más que k_RowHeight: por el mismo bug de
+    // arriba, esos botones llevaban meses con preferredWidth respetado pero preferred-
+    // Height ignorado -- 15 de ancho por 100 de alto, un palito. Con el alto ya
+    // controlado de verdad, un botón de icono tocable por rayo necesita su propio
+    // tamaño, no el de una fila de texto.
+    const float k_HeaderHeight = 26f;
+    const float k_GlyphButtonWidth = 26f;
+    const int   k_TitleFontSize = 10;
+    const int   k_RowFontSize   = 9;
+    const int   k_GlyphFontSize = 14; // Refrescar/Cerrar: iconos, más grandes que el texto de fila.
+    const int   k_MoreFontSize  = 8;
     const int   k_MaxRows     = 12; // sin ScrollRect: cap razonable para no salirse de la sala.
     static readonly string[] k_Extensions = { "*.txt", "*.csv" };
 
@@ -87,7 +108,7 @@ public class TrajectoryFileList : MonoBehaviour
         if (files.Count == 0)
         {
             var empty = VrUiKit.MakeRow(_rows, "Empty");
-            VrUiKit.MakeText(empty, $"No hay archivos en\n{_directory}", font, 22, TextAnchor.MiddleLeft);
+            VrUiKit.MakeText(empty, $"No hay archivos en\n{_directory}", font, k_RowFontSize, TextAnchor.MiddleLeft);
             var empties = empty.GetComponent<LayoutElement>();
             empties.preferredHeight = k_RowHeight * 1.5f;
         }
@@ -97,7 +118,7 @@ public class TrajectoryFileList : MonoBehaviour
             for (int i = 0; i < shown; i++)
             {
                 string path = files[i];
-                var button = VrUiKit.MakeButton(_rows, Path.GetFileName(path), font, 22);
+                var button = VrUiKit.MakeButton(_rows, Path.GetFileName(path), font, k_RowFontSize);
                 button.GetComponent<LayoutElement>().preferredHeight = k_RowHeight;
                 button.onClick.AddListener(() =>
                 {
@@ -109,7 +130,7 @@ public class TrajectoryFileList : MonoBehaviour
             if (files.Count > shown)
             {
                 var more = VrUiKit.MakeRow(_rows, "More");
-                VrUiKit.MakeText(more, $"(+{files.Count - shown} más -- no se muestran)", font, 18, TextAnchor.MiddleLeft);
+                VrUiKit.MakeText(more, $"(+{files.Count - shown} más -- no se muestran)", font, k_MoreFontSize, TextAnchor.MiddleLeft);
             }
         }
 
@@ -143,11 +164,14 @@ public class TrajectoryFileList : MonoBehaviour
         bg.color = new Color(0.05f, 0.05f, 0.07f, 0.96f);
 
         var rootLayout = rootGo.AddComponent<VerticalLayoutGroup>();
-        rootLayout.padding = new RectOffset(14, 14, 14, 14);
-        rootLayout.spacing = 8f;
+        rootLayout.padding = new RectOffset((int)k_PanelPadding, (int)k_PanelPadding, (int)k_PanelPadding, (int)k_PanelPadding);
+        rootLayout.spacing = k_RowSpacing;
         rootLayout.childControlWidth = true;
         rootLayout.childForceExpandWidth = true;
-        rootLayout.childControlHeight = false;
+        // true: sin esto, LayoutElement.preferredHeight de Header/Rows (más abajo) no
+        // se aplica y ambos se quedan en el alto por defecto de un RectTransform nuevo
+        // (100) -- ver el comentario largo junto a k_RowHeight.
+        rootLayout.childControlHeight = true;
         rootLayout.childForceExpandHeight = false;
 
         var fitter = rootGo.AddComponent<ContentSizeFitter>();
@@ -158,28 +182,45 @@ public class TrajectoryFileList : MonoBehaviour
         // Título + Refrescar + Cerrar, en una fila.
         var header = VrUiKit.MakeRow(root, "Header");
         var headerLayout = header.gameObject.AddComponent<HorizontalLayoutGroup>();
-        headerLayout.spacing = 8f;
+        headerLayout.spacing = k_RowSpacing;
         headerLayout.childControlWidth = true;
         headerLayout.childForceExpandWidth = false;
-        header.GetComponent<LayoutElement>().preferredHeight = k_RowHeight;
+        // true por la misma razón que rootLayout: sin esto, refreshBtn/closeBtn
+        // ignoraban preferredHeight y quedaban en 100 -- anchos (preferredWidth sí se
+        // aplicaba, ese es childControlWidth) pero altísimos, un palito.
+        headerLayout.childControlHeight = true;
+        headerLayout.childForceExpandHeight = false;
+        header.GetComponent<LayoutElement>().preferredHeight = k_HeaderHeight;
 
-        picker._titleText = VrUiKit.MakeText(header, "Archivos", font, 24, TextAnchor.MiddleLeft);
+        picker._titleText = VrUiKit.MakeText(header, "Archivos", font, k_TitleFontSize, TextAnchor.MiddleLeft);
         picker._titleText.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
-        var refreshBtn = VrUiKit.MakeButton(header, "⟳", font, 26); // ⟳
-        refreshBtn.GetComponent<LayoutElement>().preferredWidth = k_RowHeight;
+        // preferredWidth Y preferredHeight los dos: el Button es una Image con el
+        // texto del glifo como hijo aparte, no un Text en el propio GameObject como
+        // picker._titleText de arriba -- sin su propio ILayoutElement que reporte un
+        // alto de respaldo, con childControlHeight=true y solo el ancho fijado el
+        // alto quedaba en 0 (invisible).
+        var refreshBtn = VrUiKit.MakeButton(header, "⟳", font, k_GlyphFontSize); // ⟳
+        var refreshLE = refreshBtn.GetComponent<LayoutElement>();
+        refreshLE.preferredWidth = k_GlyphButtonWidth;
+        refreshLE.preferredHeight = k_HeaderHeight;
         refreshBtn.onClick.AddListener(picker.Refresh);
 
-        var closeBtn = VrUiKit.MakeButton(header, "✕", font, 26); // ✕
-        closeBtn.GetComponent<LayoutElement>().preferredWidth = k_RowHeight;
+        var closeBtn = VrUiKit.MakeButton(header, "✕", font, k_GlyphFontSize); // ✕
+        var closeLE = closeBtn.GetComponent<LayoutElement>();
+        closeLE.preferredWidth = k_GlyphButtonWidth;
+        closeLE.preferredHeight = k_HeaderHeight;
         closeBtn.onClick.AddListener(() => picker.gameObject.SetActive(false));
 
         var rowsGo = VrUiKit.MakeRow(root, "Rows");
         var rowsLayout = rowsGo.gameObject.AddComponent<VerticalLayoutGroup>();
-        rowsLayout.spacing = 6f;
+        rowsLayout.spacing = k_RowSpacing;
         rowsLayout.childControlWidth = true;
         rowsLayout.childForceExpandWidth = true;
-        rowsLayout.childControlHeight = false;
+        // true: mismo motivo -- sin esto cada fila de archivo ignoraba
+        // preferredHeight=k_RowHeight (Refresh(), más abajo) y quedaba en 100 pese a
+        // que el número que se le pasaba bajara cada vez.
+        rowsLayout.childControlHeight = true;
         rowsLayout.childForceExpandHeight = false;
         Destroy(rowsGo.GetComponent<LayoutElement>()); // el contenedor de filas no necesita tamaño propio
         picker._rows = rowsGo;

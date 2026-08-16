@@ -473,6 +473,13 @@ namespace AN5.EditorTools
             PlaceOnBackWall(scene, xrCamera);
             PlaceOnSideWalls(scene, xrCamera);
 
+            // Mismo resguardo que ReflowReadouts/ReflowJointsAndCart: PlaceWindow y
+            // MakeMovable miden bounds (ContentOffset, y de ahí boundsAnchor) para
+            // cada ventana de esta lista, y para cuando llegan acá ya pasaron
+            // PairQueueWithJog/RetireTrajectorySidePanel, que dejan cosas recién
+            // reparentadas/apagadas sin que Unity haya terminado de asentarlas.
+            Canvas.ForceUpdateCanvases();
+
             var pivot = k_UserStart + Vector3.up * k_EyeHeight;
             foreach (var spec in k_Windows)
             {
@@ -754,6 +761,13 @@ namespace AN5.EditorTools
                 rects[i].localScale = Vector3.one * scales[i];
             }
 
+            // Igual que en ReflowReadouts/ReflowJointsAndCart: DetachAsWindow acaba de
+            // reparentar estos rects (incluido el de las lecturas, recién reflowed por
+            // ReflowReadouts), y TryGetContentBounds más abajo mide sus hijos -- sin
+            // esto a veces medía de más o de menos según cómo cayera la cola de layout
+            // pendiente de Unity en ese instante.
+            Canvas.ForceUpdateCanvases();
+
             // Se reparten a lo ancho por lo que dibujan de verdad, no por su rect: hay
             // rects con relleno que no dibuja nada, y alinearlas por ahí dejaría huecos
             // entre pantallas.
@@ -810,6 +824,18 @@ namespace AN5.EditorTools
             var outer = readouts.GetComponent<VerticalLayoutGroup>();
             var outerPad = outer != null ? Copy(outer.padding) : new RectOffset();
             var outerSpacing = outer != null ? outer.spacing : 0f;
+
+            // NormalizeSourceCanvases acaba de pasar los canvas raíz a World Space --
+            // eso deja pendiente en la cola de Unity un recálculo de layout que todavía
+            // no corrió. Medir FirstChildSize/NaturalGridWidth contra eso leía las cajas
+            // de SecPosition (no las de SecJoints, que por lo que sea ya caían resueltas)
+            // a medio asentar: NaturalGridWidth devolvía 0, ToGrid se cortaba temprano
+            // sin avisar con ningún warning, y SecPosition se quedaba con el
+            // HorizontalLayoutGroup viejo en vez de la rejilla de 3 columnas -- la pared
+            // salía con la posición cartesiana en una sola fila de seis en vez de dos de
+            // tres. Mismo defecto ya visto en VrWindowGrab.Build() y
+            // TrajectoryFileList.Refresh(); mismo arreglo.
+            Canvas.ForceUpdateCanvases();
 
             // El ancho lo manda la sección que más pida puesta en tres columnas, para que
             // las dos rejillas queden alineadas entre sí. Se calculan las dos antes de
@@ -1020,6 +1046,12 @@ namespace AN5.EditorTools
         /// encontró SecJoints/Body o Vel).
         static RectTransform ReflowJointsAndCart(RectTransform joints, RectTransform cart)
         {
+            // Mismo resguardo que ReflowReadouts: sin esto, NaturalGridWidth/ToGrid
+            // pueden medir estas cajas contra un layout que Unity todavía no terminó
+            // de resolver desde NormalizeSourceCanvases, y la rejilla sale mal armada
+            // sin ningún warning que lo delate.
+            Canvas.ForceUpdateCanvases();
+
             var jointsBody = joints.Find("Body") as RectTransform;
             if (jointsBody == null)
             {

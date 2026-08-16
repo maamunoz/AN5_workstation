@@ -4395,7 +4395,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: trayectoria_prueba.csv
+  m_Text: 
 --- !u!222 &89031244
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -35659,7 +35659,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 9090
+  m_Text: 
 --- !u!222 &792819500
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -42919,15 +42919,10 @@ GameObject:
   m_Component:
   - component: {fileID: 965538506}
   - component: {fileID: 965538505}
-  - component: {fileID: 965538507}
   - component: {fileID: 965538515}
-  - component: {fileID: 965538514}
+  - component: {fileID: 965538507}
   - component: {fileID: 965538513}
-  - component: {fileID: 965538512}
-  - component: {fileID: 965538511}
   - component: {fileID: 965538510}
-  - component: {fileID: 965538509}
-  - component: {fileID: 965538508}
   m_Layer: 0
   m_Name: MeasurementHarness
   m_TagString: Untagged
@@ -42996,113 +42991,6 @@ MonoBehaviour:
   motionSwitchSeconds: 5
   motionSpeedPct: 30
   alsoMeasureJointStates: 0
---- !u!114 &965538508
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 965538504}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 14b252fca0bcc874f82a9905ce2c51f5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AN5.Measurement.P10TrajectoryPrep
-  poseCounts: 0a00000032000000c8000000
-  repetitions: 5
-  sourceFileName: 
-  loadTimeoutSeconds: 300
-  pauseBetweenLoads: 3
-  warmupLoad: 1
---- !u!114 &965538509
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 965538504}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: eb0ff1863083fa14190fffec16172e7a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AN5.Measurement.P9KinematicConsistency
-  referenceConfigurations:
-  - j1: 35.773
-    j2: -111.534
-    j3: -117.293
-    j4: -41.173
-    j5: 90
-    j6: -69.227
-  - j1: -5.217
-    j2: -105.019
-    j3: -111.035
-    j4: -53.946
-    j5: 90
-    j6: -35.217
-  - j1: -11.545
-    j2: -84.562
-    j3: -106.396
-    j4: -79.042
-    j5: 90
-    j6: -81.545
-  - j1: 13.59
-    j2: -103.032
-    j3: -74.944
-    j4: -92.023
-    j5: 90
-    j6: -121.41
-  - j1: 72.337
-    j2: -98.882
-    j3: -102.172
-    j4: -68.946
-    j5: 90
-    j6: -107.663
-  - j1: 132.397
-    j2: -112.38
-    j3: -109.753
-    j4: -47.868
-    j5: 90
-    j6: -107.603
-  - j1: 162.337
-    j2: -95.817
-    j3: -92.159
-    j4: -82.024
-    j5: 90
-    j6: -147.663
-  - j1: 146.536
-    j2: -108.082
-    j3: -103.354
-    j4: -58.565
-    j5: 90
-    j6: -43.464
-  - j1: 85.148
-    j2: -139.769
-    j3: -68.403
-    j4: -241.828
-    j5: -90
-    j6: 5.148
-  - j1: 1.825
-    j2: -73.512
-    j3: 103.85
-    j4: -120.339
-    j5: -90
-    j6: -98.175
-  speedPct: 30
-  arrivalToleranceDeg: 0.5
-  arrivalTimeoutSeconds: 30
-  settleSeconds: 1.5
-  safetyWaypoint:
-    j1: 0
-    j2: -90
-    j3: 90
-    j4: -90
-    j5: 90
-    j6: 0
-  baseLink: {fileID: 0}
-  toolLink: {fileID: 0}
-  baseLinkName: base_link
-  toolLinkName: tool_Link
-  fallbackToolLinkName: j6_Link
 --- !u!114 &965538510
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -43118,50 +43006,6 @@ MonoBehaviour:
   windowSeconds: 120
   writeRawSamples: 1
   targetRefreshHzOverride: 0
---- !u!114 &965538511
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 965538504}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 47dfb245b1ce5d04fa5523ffefc6094e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AN5.Measurement.P6JointAccuracy
-  setpointsPerJoint: 5
-  rangeFraction: 0.6
-  basePoseDeg:
-  - 0
-  - -90
-  - 90
-  - -90
-  - 90
-  - 0
-  speedPct: 20
-  arrivalToleranceDeg: 0.5
-  arrivalTimeoutSeconds: 30
-  settleSeconds: 1.5
-  motionDoneExtraTimeoutSeconds: 3
-  safetyMarginDeg: 5
---- !u!114 &965538512
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 965538504}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 50412b8c32aa59f4d891d3cf440f6172, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AN5.Measurement.P5ApplicationLatency
-  samples: 50
-  intervalSeconds: 0.3
-  timeoutSeconds: 5
-  coldStartTimeoutSeconds: 25
-  perturbationMm: 5
 --- !u!114 &965538513
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -43178,19 +43022,6 @@ MonoBehaviour:
   intervalSeconds: 0.2
   timeoutSeconds: 5
   warmupSamples: 5
---- !u!114 &965538514
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 965538504}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b861553fcb6c90341a38c59a9e1ca811, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AN5.Measurement.P2TopicIntegrity
-  timeoutSeconds: 10
 --- !u!114 &965538515
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -56700,7 +56531,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 192.168.1.10
+  m_Text: 
 --- !u!222 &1250180075
 CanvasRenderer:
   m_ObjectHideFlags: 0
