@@ -98,17 +98,6 @@ namespace AN5.EditorTools
             // puede recolocar con los mandos, ver k_MovableWindows.
             new WindowSpec(k_TrajectoryWindow,                  0f, 0.95f, 1.05f, 0.00184f),
 
-            // El footer (la barra de pestañas) se queda flotando en el mundo, en el punto
-            // donde arranca la aplicación, haciendo consola justo debajo del control de
-            // trayectorias. Al quedarse anclado aquí se puede uno alejar de él y volver,
-            // al revés que el header, que va pegado a la cabeza.
-            //
-            // Va por debajo de SecTraj, que llega hasta -35.3° de elevación. Ojo con el
-            // margen: mirando hacia abajo los extremos de una tira ancha y plana quedan
-            // más ALTOS que su centro, o sea que su borde superior no es la elevación que
-            // se pide aquí sino unos grados por encima.
-            new WindowSpec("PersistentLayer/Footer",            0f, 1.10f, 0.62f, 0.0009f),
-
             // La pestaña de trayectorias, a la derecha. Una vez retirado su panel derecho
             // (ver RetireTrajectorySidePanel) lo que le queda visible es su CenterBottom,
             // 1622x436 px, que a 0.0009 m/px son 1.46 x 0.39 m: a 1.9 m y puesta a 50°
@@ -125,9 +114,10 @@ namespace AN5.EditorTools
             // 0.0009 m/px la atravesaría, así que esta va más pequeña, 1.34 x 0.76 m.
             new WindowSpec("TabContainer/Panel_ppal",         -95f, 2.15f, 1.45f, 0.0007f),
 
-            // (El Header no está aquí: va anclado al visor, ver k_HudWindows y
-            // PinToHeadset. Y el panel lateral y el selector de cámara se pegan a los
-            // muros laterales, ver k_SideWallWindows y PlaceOnSideWalls.)
+            // (El panel lateral y el selector de cámara se pegan a los muros laterales,
+            // ver k_SideWallWindows y PlaceOnSideWalls. Header y Footer no están en
+            // ningún lado: se desactivan enteros en DisableDesktopOnly, son inútiles en
+            // este puesto de VR.)
 
             // El velo de carga es modal: al frente y más cerca que todo lo demás, para
             // que tape el resto mientras está visible.
@@ -152,44 +142,6 @@ namespace AN5.EditorTools
             k_TrajectoryWindow,
             k_TrajectoriesTabWindow,
         };
-
-        /// Una tira anclada al visor. Solo lleva la elevación dentro del campo de visión
-        /// y su escala: en azimut van centradas y la distancia es común.
-        readonly struct HudWindowSpec
-        {
-            public readonly string Path;
-            public readonly float ElevationDeg;   // + = por encima del centro de la vista
-            public readonly float PixelToMeter;
-
-            public HudWindowSpec(string path, float elevationDeg, float pixelToMeter)
-            {
-                Path = path;
-                ElevationDeg = elevationDeg;
-                PixelToMeter = pixelToMeter;
-            }
-        }
-
-        // El header (logo, pastillas de estado ROS/robot, ModeToggle) no va en el mundo:
-        // cuelga de la cámara del rig, así que se queda fijo en el campo de visión y
-        // acompaña al operador mire donde mire. (El footer sí se queda en el mundo, como
-        // consola en el punto de partida: ver su fila en k_Windows.)
-        //
-        // Va arriba del todo. Al ir pegado a la cabeza tapa permanentemente su franja del
-        // campo visual, así que tiene que quedar por encima del borde superior de las
-        // pantallas de la pared, que con la vista al frente llega a 21.9°.
-        //
-        // La elevación es la del centro de la tira, y hay que darle margen: los extremos
-        // de una tira ancha y plana quedan más lejos que su centro, así que su ángulo
-        // "cae" — 3.4° en este caso. A 26° el borde bajo se metía hasta 22.6° y rozaba la
-        // cabecera de las pantallas.
-        static readonly HudWindowSpec[] k_HudWindows =
-        {
-            new HudWindowSpec("PersistentLayer/Header", 30f, 0.0009f),
-        };
-
-        // m por delante de los ojos. Más cerca cansa la vista (a menos de un metro el ojo
-        // pelea entre enfocar y converger) y más lejos las tiras se comerían medio campo.
-        const float k_HudDistance = 1.6f;
 
         /// Una de las pantallas de la pared del fondo. Solo lleva escala: la posición la
         /// reparte PlaceOnBackWall a lo largo del muro.
@@ -232,6 +184,12 @@ namespace AN5.EditorTools
         const int k_ReadoutColumns = 3;
         const string k_JointsSection = "SecJoints";
         static readonly string[] k_ReadoutSections = { k_JointsSection, "SecPosition" };
+
+        // Mismo mecanismo (ToGrid/NaturalGridWidth) que k_ReadoutColumns, pero para los
+        // sliders de jog y las cajas cartesianas de Panel_trayectorias -- ver
+        // ReflowJointsAndCart. Tres columnas: J1-J3/J4-J6 y X-Y-Z/Rx-Ry-Rz quedan cada
+        // una en dos filas parejas.
+        const int k_JogColumns = 3;
 
         // La cola de coordenadas sube del panel derecho de su pestaña a ponerse al lado
         // de los sliders de jog, dentro del mismo CenterBottom: encolar una pose es leer
@@ -347,9 +305,11 @@ namespace AN5.EditorTools
                 throw new Exception("El prefab del XR Origin no trae cámara.");
 
             EnsureFloor(scene);
-            // DisableDesktopOnly va antes de LayOutWindows: llega a los controles de
-            // escritorio por su ruta dentro de PersistentLayer, y LayOutWindows saca de
-            // ahí al Header.
+            // DisableDesktopOnly va antes de LayOutWindows: esta última termina
+            // apagando PersistentLayer entero si no le queda nada activo adentro (ver
+            // DeactivateIfEmpty), y para que esa cuenta salga bien primero tiene que
+            // haber apagado ya todo lo que solo servía en escritorio -- Header y Footer
+            // incluidos.
             DisableDesktopOnly(scene);
             LayOutWindows(scene, xrCamera);
             SetUpEventSystem(scene);
@@ -450,6 +410,13 @@ namespace AN5.EditorTools
 
             if (floor.GetComponent<Collider>() == null)
                 Debug.LogWarning("[QuestSceneBuilder] Floor no tiene collider: la locomoción continua no tendrá suelo.");
+
+            // AN5_sim trae además un "floor" (minúscula) suelto, activo de fábrica y con
+            // el material "pared" puesto por error -- no es este Floor, es una pieza
+            // aparte que se queda tapando/asomando por debajo con la textura equivocada.
+            // Se apaga en vez de borrarse, como el resto de lo que sobra: si algún día se
+            // corrige en AN5_sim, basta con quitar esta línea.
+            Deactivate(FindRoot(scene, "floor"));
         }
 
         // -----------------------------------------------------------------
@@ -473,7 +440,14 @@ namespace AN5.EditorTools
                 Deactivate(Child(persistent, "DPad_Orbit"));
                 Deactivate(Child(persistent, "DPad_Translate"));
                 Deactivate(Child(persistent, "ZoomSlider"));
-                Deactivate(Child(persistent, "Header/WindowButtons"));
+
+                // Header (logo, pastillas de estado, ModeToggle) y Footer (la barra de
+                // pestañas) no tienen sitio en este puesto de VR: las pestañas conviven
+                // todas activas a la vez (ver ReleaseTabSwitching) y el estado que
+                // mostraba el header no tiene equivalente todavía acá. Enteros y no por
+                // piezas, igual que el resto de lo que solo tenía sentido en escritorio.
+                Deactivate(Child(persistent, "Header"));
+                Deactivate(Child(persistent, "Footer"));
             }
         }
 
@@ -498,7 +472,6 @@ namespace AN5.EditorTools
             RetireTrajectorySidePanel(scene);
             PlaceOnBackWall(scene, xrCamera);
             PlaceOnSideWalls(scene, xrCamera);
-            PinToHeadset(scene, xrCamera);
 
             var pivot = k_UserStart + Vector3.up * k_EyeHeight;
             foreach (var spec in k_Windows)
@@ -537,9 +510,9 @@ namespace AN5.EditorTools
         ///
         /// Tiene que correr antes de medir o mover nada: mientras un canvas está en
         /// Screen Space, Unity conduce su RectTransform desde la resolución del Game
-        /// View, así que Header (anclado a lo ancho de su padre) o LeftPanel (a lo alto)
-        /// medirían lo que midiera la ventana del editor y no la maquetación de
-        /// referencia con la que están ancladas todas las secciones de la UI.
+        /// View, así que LeftPanel, anclado a lo alto de su padre, mediría lo que
+        /// midiera la ventana del editor y no la maquetación de referencia con la que
+        /// están ancladas todas las secciones de la UI.
         static void NormalizeSourceCanvases(Scene scene, Camera xrCamera)
         {
             var tabContainer = FindRoot(scene, "TabContainer");
@@ -571,40 +544,22 @@ namespace AN5.EditorTools
 
         /// Deja que las tres pestañas se vean a la vez.
         ///
-        /// TabController (que vive en el Footer, porque el Footer *es* la barra de
-        /// pestañas) apaga en Start todos los paneles menos el activo. Con las pestañas
-        /// convertidas en ventanas separadas eso las haría desaparecer, así que se
-        /// destruye el componente: los botones de la barra se quedan con un destino nulo
-        /// y sus onClick pasan a ser inocuos, sin romper nada más.
+        /// TabController (que vive en el Footer) es quien apaga en Start todos los
+        /// paneles menos el activo -- pero el Footer ya se desactivó entero en
+        /// DisableDesktopOnly (son inútiles en este puesto de VR, ver ese comentario),
+        /// así que su Start() ya ni corre y no hace falta tocarlo acá para nada: alcanza
+        /// con activar los paneles a mano.
         ///
         /// Los dos paneles vivos pueden estar activos a la vez sin pelearse:
         /// MonitoreoActivation y TrayectoriasActivation solo comparten driveRobotModel y
         /// los dos lo quieren en true; el conflicto estaba en el OnDisable del saliente,
-        /// que ya no llega a ocurrir. Panel_ppal se deja como está: está retirada, su
-        /// contenido duplica al de monitoreo y activarla sería un cambio de UI, no de
-        /// colocación.
+        /// que con TabController inerte ya no llega a ocurrir. Panel_ppal se deja como
+        /// está: está retirada, su contenido duplica al de monitoreo y activarla sería
+        /// un cambio de UI, no de colocación.
         static void ReleaseTabSwitching(Scene scene)
         {
             var tabContainer = FindRoot(scene, "TabContainer");
             if (tabContainer == null) return;
-
-            var persistent = FindRoot(scene, "PersistentLayer");
-            var footer = persistent != null ? Child(persistent, "Footer") : null;
-            if (footer != null)
-            {
-                var destroyed = 0;
-                foreach (var behaviour in footer.GetComponents<MonoBehaviour>())
-                {
-                    if (behaviour == null || behaviour.GetType().Name != "TabController")
-                        continue;
-                    UnityEngine.Object.DestroyImmediate(behaviour);
-                    destroyed++;
-                }
-
-                if (destroyed == 0)
-                    Debug.LogWarning("[QuestSceneBuilder] No se encontró TabController en el Footer: " +
-                                     "revisa a mano que las pestañas no se apaguen entre sí.");
-            }
 
             Activate(Child(tabContainer, "Panel_monitoreo"));
             Activate(Child(tabContainer, "Panel_trayectorias"));
@@ -615,9 +570,10 @@ namespace AN5.EditorTools
         /// 1920x1080.
         static void DetachAsWindow(RectTransform rect, Camera xrCamera)
         {
-            // El tamaño se mide antes de soltar el objeto: Header y Footer se estiran a
-            // lo ancho del padre y LeftPanel a lo alto, así que en cuanto pierden el
-            // padre sus anclas dejan de decir nada y hay que congelar lo que medían.
+            // El tamaño se mide antes de soltar el objeto: hay rects anclados a
+            // estiramiento (LeftPanel, por ejemplo, a lo alto del padre), así que en
+            // cuanto pierden el padre sus anclas dejan de decir nada y hay que congelar
+            // lo que medían.
             LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
             var size = rect.rect.size;
 
@@ -685,7 +641,25 @@ namespace AN5.EditorTools
         static void MakeMovable(RectTransform rect, string path)
         {
             if (Array.IndexOf(k_MovableWindows, path) < 0) return;
-            if (rect.GetComponent<VrWindowGrab>() == null) rect.gameObject.AddComponent<VrWindowGrab>();
+
+            var grab = rect.GetComponent<VrWindowGrab>();
+            if (grab == null) grab = rect.gameObject.AddComponent<VrWindowGrab>();
+
+            // Panel_trayectorias no ancla el asa a toda la ventana (VrWindowGrab.
+            // ContentBounds, que uniría SecCartInput con la columna de la cola de
+            // coordenadas al lado -- ver PairQueueWithJog) sino solo a SecCartInput: la
+            // cola crece de alto con cada punto que se agrega, y si mandara ella el asa
+            // se correría de cuadro en cuadro. SecCartInput es fija, así que el asa queda
+            // siempre justo debajo del panel de posición cartesiana.
+            if (path == k_TrajectoriesTabWindow)
+            {
+                var cartInput = rect.Find("CenterBottom/JogRow/JogColumn/SecCartInput") as RectTransform;
+                if (cartInput != null)
+                    grab.boundsAnchor = cartInput;
+                else
+                    Debug.LogWarning("[QuestSceneBuilder] No se encontró SecCartInput para anclar " +
+                                      "el asa de Panel_trayectorias; queda pegada a todo el contenido.");
+            }
         }
 
         /// Centro del contenido visible de un rect, en su espacio local. Vector2.zero si
@@ -714,45 +688,6 @@ namespace AN5.EditorTools
             }
 
             return any;
-        }
-
-        /// Ancla al visor las tiras de k_HudWindows: dejan de estar en el mundo y pasan a
-        /// colgar de la cámara del rig, con lo que se quedan clavadas en el campo de
-        /// visión.
-        ///
-        /// Ojo: estas dos son las únicas ventanas que **no** quedan perpendiculares a la
-        /// tapa de la mesa. Al ir pegadas a la cabeza acompañan también su cabeceo y su
-        /// alabeo, que es justo lo que se pide de un HUD.
-        static void PinToHeadset(Scene scene, Camera xrCamera)
-        {
-            foreach (var spec in k_HudWindows)
-            {
-                var rect = FindRect(scene, spec.Path);
-                if (rect == null)
-                {
-                    Debug.LogWarning("[QuestSceneBuilder] No se encontró la tira " + spec.Path + ".");
-                    continue;
-                }
-
-                DetachAsWindow(rect, xrCamera);
-                rect.SetParent(xrCamera.transform, worldPositionStays: false);
-
-                // Un canvas se ve desde su cara -Z y la cámara mira hacia su +Z local, así
-                // que sin rotación local el canvas ya le da la cara.
-                rect.localRotation = Quaternion.identity;
-                rect.localScale = Vector3.one * spec.PixelToMeter;
-                rect.localPosition = new Vector3(
-                    0f,
-                    k_HudDistance * Mathf.Tan(spec.ElevationDeg * Mathf.Deg2Rad),
-                    k_HudDistance);
-
-                // Aquí no se recentra sobre el contenido, al revés que en las ventanas del
-                // mundo: lo que se ve de estas dos es su barra de fondo, que es un Image
-                // del propio rect y no un hijo, así que ContentOffset no la mide. Centrar
-                // por los hijos dejaba la barra corrida 13° a la derecha. Y una barra de
-                // header se centra ella, con su logo a la izquierda y su estado a la
-                // derecha, que es como está maquetada.
-            }
         }
 
         /// Apaga el panel derecho de la pestaña de trayectorias, que se queda sin
@@ -883,7 +818,7 @@ namespace AN5.EditorTools
             foreach (var name in k_ReadoutSections)
             {
                 var body = readouts.Find(name + "/Body") as RectTransform;
-                if (body != null) sectionWidth = Mathf.Max(sectionWidth, NaturalGridWidth(body));
+                if (body != null) sectionWidth = Mathf.Max(sectionWidth, NaturalGridWidth(body, k_ReadoutColumns));
             }
 
             if (sectionWidth <= 0f)
@@ -904,7 +839,7 @@ namespace AN5.EditorTools
                 var head = section.Find("Head") as RectTransform;
                 if (head != null) FitHead(head, sectionWidth);
 
-                var sectionHeight = ToGrid(body, sectionWidth) + (head != null ? head.rect.height : 0f);
+                var sectionHeight = ToGrid(body, sectionWidth, k_ReadoutColumns) + (head != null ? head.rect.height : 0f);
                 SetSize(section, new Vector2(sectionWidth, sectionHeight));
 
                 // El grupo de fuera no controla la altura de sus hijos, así que este
@@ -925,18 +860,32 @@ namespace AN5.EditorTools
             LayoutRebuilder.ForceRebuildLayoutImmediate(readouts);
         }
 
+        // Nombres de los hijos de SecJoints/Body, en el orden en que ya están (J1..J6),
+        // más "Vel" -- que ReflowJointsAndCart saca del medio para la columna de la cola.
+        static readonly string[] k_JointBoxNames =
+            { "Joint_BASE", "Joint_SHOULDER", "Joint_ELBOW", "Joint_WRIST 1", "Joint_WRIST 2", "Joint_WRIST 3" };
+        const string k_VelBoxName = "Vel";
+
+        // Nombres de los hijos de SecCartInput/Body, en el orden que se quiere (X,Y,Z /
+        // Rx,Ry,Rz) -- en AN5_sim vienen X,Y,Z,Rz,Ry,Rx (el grupo de rotación al revés),
+        // así que ReflowJointsAndCart los reordena antes de armar la rejilla.
+        static readonly string[] k_CartBoxNames = { "BoxX", "BoxY", "BoxZ", "BoxRx", "BoxRy", "BoxRz" };
+
         /// Sube la cola de coordenadas del panel derecho de su pestaña y la pone al lado
         /// de los sliders de jog, dentro del mismo CenterBottom.
         ///
         /// Encolar una pose es leer esos sliders (SecCoordQueueController), así que las
         /// dos mitades acaban formando un solo panel:
         ///
-        ///     [ SecJoints    ] [          ]
-        ///     [ SecCartInput ] [ SecCoord ]
+        ///     [ J1 J2 J3 ] [ Vel   ]
+        ///     [ J4 J5 J6 ] [       ]
+        ///     [ X  Y  Z  ] [ Queue ]
+        ///     [ Rx Ry Rz ] [       ]
         ///
-        /// A la izquierda una columna con las articulaciones y, justo debajo, las entradas
-        /// cartesianas; a la derecha la cola, que es más alta que las dos juntas y las
-        /// acompaña de arriba abajo.
+        /// A la izquierda una columna con las articulaciones (replanteadas en rejilla de
+        /// 3 por ReflowJointsAndCart) y, justo debajo, las entradas cartesianas, también
+        /// en rejilla de 3; a la derecha Vel arriba y la cola debajo, que entre las dos
+        /// son más altas que la columna de la izquierda y la acompañan de arriba abajo.
         static void PairQueueWithJog(Scene scene)
         {
             var host = FindRect(scene, k_QueueHost);
@@ -951,23 +900,19 @@ namespace AN5.EditorTools
                 return;
             }
 
+            var vel = ReflowJointsAndCart(joints, cart);
+
             var queueSize = queue.rect.size;
             var jointsSize = joints.rect.size;
             var cartHeight = cart != null ? cart.rect.height : 0f;
+            var velSize = vel != null ? vel.rect.size : Vector2.zero;
 
             var outer = host.GetComponent<VerticalLayoutGroup>();
-            var outerSpacing = outer != null ? outer.spacing : 0f;
 
             var row = new GameObject(k_QueueRow, typeof(RectTransform)).GetComponent<RectTransform>();
             row.SetParent(host, worldPositionStays: false);
             row.SetSiblingIndex(joints.GetSiblingIndex());
 
-            // La fila solo coloca: la columna y la cola conservan el ancho que tienen.
-            //
-            // Estrechar los sliders para hacerle sitio a la cola no es opción: sus siete
-            // cajas declaran un mínimo que deja a SecJoints en 1350 px, y el layout se
-            // salta cualquier preferredWidth menor que se le ponga. El sitio sale de
-            // ensanchar el bloque.
             var group = row.gameObject.AddComponent<HorizontalLayoutGroup>();
             group.spacing = k_QueueSpacing;
             group.childAlignment = TextAnchor.UpperLeft;
@@ -979,9 +924,8 @@ namespace AN5.EditorTools
             var column = new GameObject(k_QueueColumn, typeof(RectTransform)).GetComponent<RectTransform>();
             column.SetParent(row, worldPositionStays: false);
 
-            // La columna sí manda el ancho de los suyos: así SecCartInput se estrecha de
-            // 1602 a los 1350 px de los sliders y cae justo debajo, en el hueco que deja
-            // la cola por ser más alta. Sus seis cajas caben de sobra — piden 1002.
+            // La columna sí manda el ancho de los suyos: así SecCartInput se estrecha o
+            // ensancha para caer exactamente debajo de SecJoints, columna con columna.
             var stack = column.gameObject.AddComponent<VerticalLayoutGroup>();
             stack.spacing = k_QueueSpacing;
             stack.childAlignment = TextAnchor.UpperLeft;
@@ -992,7 +936,23 @@ namespace AN5.EditorTools
 
             joints.SetParent(column, worldPositionStays: false);
             if (cart != null) cart.SetParent(column, worldPositionStays: false);
-            queue.SetParent(row, worldPositionStays: false);
+
+            // Columna derecha: Vel arriba, la cola debajo -- mismo mecanismo que la
+            // izquierda, con la cola (más ancha) mandando el ancho y Vel estirándose para
+            // igualarla.
+            var velColumn = new GameObject("VelQueueColumn", typeof(RectTransform)).GetComponent<RectTransform>();
+            velColumn.SetParent(row, worldPositionStays: false);
+
+            var velStack = velColumn.gameObject.AddComponent<VerticalLayoutGroup>();
+            velStack.spacing = k_QueueSpacing;
+            velStack.childAlignment = TextAnchor.UpperLeft;
+            velStack.childControlWidth = true;
+            velStack.childControlHeight = false;
+            velStack.childForceExpandWidth = true;
+            velStack.childForceExpandHeight = false;
+
+            if (vel != null) vel.SetParent(velColumn, worldPositionStays: false);
+            queue.SetParent(velColumn, worldPositionStays: false);
 
             // Al salir del Content de su pestaña la cola pierde el layout group que la
             // dimensionaba, así que se le congela el tamaño que traía.
@@ -1001,19 +961,29 @@ namespace AN5.EditorTools
             var columnHeight = jointsSize.y + (cart != null ? k_QueueSpacing + cartHeight : 0f);
             SetSize(column, new Vector2(jointsSize.x, columnHeight));
 
-            var rowWidth = jointsSize.x + k_QueueSpacing + queueSize.x;
-            var rowHeight = Mathf.Max(columnHeight, queueSize.y);
+            var velColumnWidth = Mathf.Max(velSize.x, queueSize.x);
+            var velColumnHeight = velSize.y + (vel != null ? k_QueueSpacing : 0f) + queueSize.y;
+            SetSize(velColumn, new Vector2(velColumnWidth, velColumnHeight));
+
+            var rowWidth = jointsSize.x + k_QueueSpacing + velColumnWidth;
+            var rowHeight = Mathf.Max(columnHeight, velColumnHeight);
             SetSize(row, new Vector2(rowWidth, rowHeight));
 
             // CenterBottom no se autoajusta: hay que darle a mano lo que ha crecido su
-            // contenido. Antes apilaba los sliders y las cartesianas por separado; ahora
-            // solo cuelga de él la fila.
+            // contenido. Antes se calculaba como host.rect.height + rowHeight - oldContent,
+            // restando lo que joints+cart medían ya reflowed -- pero eso es lo mismo que
+            // rowHeight (jointsSize y cartHeight se leen DESPUÉS de ReflowJointsAndCart), así
+            // que la resta se cancelaba y host se quedaba con el alto viejo, heredado del
+            // layout de escritorio. La fila entera (577px en la rejilla de 3 columnas) no
+            // cabía en esos 408px y JogRow se salía por abajo del propio rect de la ventana,
+            // arrastrando con ella a SecCartInput y al asa que cuelga de él. Como con el
+            // ancho: alto absoluto, contenido más padding, nada de restar.
             var pad = outer != null ? outer.padding : null;
             var hostWidth = rowWidth + (pad != null ? pad.left + pad.right : 0);
+            var hostHeight = rowHeight + (pad != null ? pad.top + pad.bottom : 0);
             var grown = hostWidth - host.rect.width;
-            var oldContent = jointsSize.y + (cart != null ? outerSpacing + cartHeight : 0f);
 
-            SetSize(host, new Vector2(hostWidth, host.rect.height + rowHeight - oldContent));
+            SetSize(host, new Vector2(hostWidth, hostHeight));
 
             // Y crece hacia la izquierda: por la derecha el bloque ya toca el panel
             // lateral de la pestaña, y por la izquierda sobra sitio hasta el borde.
@@ -1022,9 +992,108 @@ namespace AN5.EditorTools
             LayoutRebuilder.ForceRebuildLayoutImmediate(host);
         }
 
-        /// Ancho que pide un Body puesto en k_ReadoutColumns columnas conservando el
-        /// tamaño de caja, el espaciado y los márgenes que ya traía de escritorio.
-        static float NaturalGridWidth(RectTransform body)
+        /// Replantea SecJoints y SecCartInput en rejillas de k_JogColumns columnas --
+        /// mismo mecanismo (ToGrid/NaturalGridWidth) que ReflowReadouts usa para las
+        /// lecturas de la pared, aplicado acá a los controles interactivos de jog.
+        ///
+        /// SecJoints pierde a Vel de en medio antes de armar la rejilla: con J1..J6 solos
+        /// (seis cajas, tres columnas) quedan exactamente dos filas parejas -- J1 J2 J3 /
+        /// J4 J5 J6 -- y Vel sale por su cuenta para la columna de la cola en
+        /// PairQueueWithJog. SecCartInput no pierde nada, pero en AN5_sim sus seis cajas
+        /// están en el orden X,Y,Z,Rz,Ry,Rx (el grupo de rotación al revés), así que se
+        /// reordenan primero a X,Y,Z,Rx,Ry,Rz -- si no, la rejilla saldría con la segunda
+        /// fila invertida.
+        ///
+        /// El ancho de columna es uno solo, compartido por las dos rejillas -- el que más
+        /// pida de las dos, igual que ReflowReadouts hace para alinear SecJoints y
+        /// SecPosition en la pared. Pero un mismo ancho de CONTENEDOR no alcanza para que
+        /// las CAJAS calcen entre sí: ToGrid reparte ese ancho en celdas descontando el
+        /// espaciado y el margen del propio Body, y SecJoints/SecCartInput traían cada uno
+        /// los suyos (los sliders, con sus botones +/-, vienen con más aire que una caja
+        /// de texto sola) -- con cada Body descontando de más o de menos por su cuenta,
+        /// las celdas resultantes no salían exactamente iguales aunque el ancho total sí
+        /// coincidiera. Por eso el espaciado y el margen de SecJoints (el que manda el
+        /// ancho, ver más abajo) se reutilizan tal cual para las dos rejillas: misma
+        /// fórmula, mismas cuentas, celdas idénticas.
+        ///
+        /// Devuelve el RectTransform de Vel, ya desprendido de Body (null si no se
+        /// encontró SecJoints/Body o Vel).
+        static RectTransform ReflowJointsAndCart(RectTransform joints, RectTransform cart)
+        {
+            var jointsBody = joints.Find("Body") as RectTransform;
+            if (jointsBody == null)
+            {
+                Debug.LogWarning("[QuestSceneBuilder] SecJoints no tiene Body: los sliders quedan como estaban.");
+                return null;
+            }
+
+            var vel = jointsBody.Find(k_VelBoxName) as RectTransform;
+            if (vel != null) vel.SetParent(null, worldPositionStays: false);
+
+            ReorderChildren(jointsBody, k_JointBoxNames);
+
+            var cartBody = cart != null ? cart.Find("Body") as RectTransform : null;
+            if (cartBody != null) ReorderChildren(cartBody, k_CartBoxNames);
+
+            // Espaciado/margen de referencia: los de SecJoints, leídos ANTES de que
+            // ToGrid los consuma (destruye el HorizontalLayoutGroup original al convertir
+            // a grilla). Se usan tal cual para las dos rejillas.
+            var jointsGroup = jointsBody.GetComponent<HorizontalOrVerticalLayoutGroup>();
+            var spacing = jointsGroup != null ? new Vector2(jointsGroup.spacing, jointsGroup.spacing) : Vector2.zero;
+            var pad = jointsGroup != null ? Copy(jointsGroup.padding) : new RectOffset();
+
+            var width = NaturalGridWidth(jointsBody, k_JogColumns);
+            if (cartBody != null) width = Mathf.Max(width, NaturalGridWidth(cartBody, k_JogColumns));
+
+            ReflowBody(joints, jointsBody, k_JogColumns, width, spacing, pad);
+            if (cart != null && cartBody != null) ReflowBody(cart, cartBody, k_JogColumns, width, spacing, pad);
+
+            return vel;
+        }
+
+        /// Deja los hijos de `parent` en el orden de `names`, moviendo por índice de
+        /// hermano -- lo mismo que arrastrarlos a mano en la jerarquía del Editor. Los que
+        /// no aparecen en `names` no se tocan.
+        static void ReorderChildren(Transform parent, string[] names)
+        {
+            for (var i = 0; i < names.Length; i++)
+            {
+                var child = parent.Find(names[i]);
+                if (child != null) child.SetSiblingIndex(i);
+            }
+        }
+
+        /// Convierte `body` en rejilla de `columns` columnas al ancho `width` (mismo para
+        /// todas las que se quieran alineadas, ver ReflowJointsAndCart) y ajusta `section`
+        /// (su padre directo, con el Head del título) al tamaño resultante. Cuerpo
+        /// compartido por ReflowJointsAndCart para SecJoints y SecCartInput.
+        ///
+        /// `spacing`/`pad`: cuando se da (no null), ToGrid los usa tal cual en vez de leer
+        /// los del propio Body -- así dos Body distintos reparten el mismo `width` con la
+        /// misma cuenta y sus celdas salen idénticas. Null (el uso de ReflowReadouts) dice
+        /// "cada uno con lo suyo", que es lo que quiere cuando no hace falta que calcen
+        /// celda a celda con otra sección, solo compartir el ancho total.
+        static void ReflowBody(RectTransform section, RectTransform body, int columns, float width,
+                                Vector2? spacing = null, RectOffset pad = null)
+        {
+            if (width <= 0f)
+            {
+                Debug.LogWarning("[QuestSceneBuilder] " + section.name + " no tiene cajas que medir: se deja como estaba.");
+                return;
+            }
+
+            var head = section.Find("Head") as RectTransform;
+            if (head != null) FitHead(head, width);
+
+            var height = ToGrid(body, width, columns, spacing, pad) + (head != null ? head.rect.height : 0f);
+            SetSize(section, new Vector2(width, height));
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(section);
+        }
+
+        /// Ancho que pide un Body puesto en `columns` columnas conservando el tamaño de
+        /// caja, el espaciado y los márgenes que ya traía de escritorio.
+        static float NaturalGridWidth(RectTransform body, int columns)
         {
             var cell = FirstChildSize(body);
             if (cell.x <= 0f) return 0f;
@@ -1033,12 +1102,15 @@ namespace AN5.EditorTools
             var spacing = group != null ? group.spacing : 0f;
             var pad = group != null ? group.padding : new RectOffset();
 
-            return k_ReadoutColumns * cell.x + (k_ReadoutColumns - 1) * spacing + pad.left + pad.right;
+            return columns * cell.x + (columns - 1) * spacing + pad.left + pad.right;
         }
 
-        /// Convierte un Body en rejilla de k_ReadoutColumns columnas y devuelve la altura
-        /// que necesita.
-        static float ToGrid(RectTransform body, float width)
+        /// Convierte un Body en rejilla de `columns` columnas y devuelve la altura que
+        /// necesita. `spacing`/`pad` explícitos (no null) ganan sobre los del propio
+        /// Body -- ver el comentario de ReflowBody sobre por qué hace falta eso para que
+        /// dos Body distintos terminen con celdas idénticas.
+        static float ToGrid(RectTransform body, float width, int columns,
+                             Vector2? spacing = null, RectOffset pad = null)
         {
             var cell = FirstChildSize(body);
             var count = 0;
@@ -1048,21 +1120,21 @@ namespace AN5.EditorTools
             if (count == 0 || cell.y <= 0f) return body.rect.height;
 
             var group = body.GetComponent<HorizontalOrVerticalLayoutGroup>();
-            var spacing = group != null ? new Vector2(group.spacing, group.spacing) : Vector2.zero;
-            var pad = group != null ? Copy(group.padding) : new RectOffset();
+            var resolvedSpacing = spacing ?? (group != null ? new Vector2(group.spacing, group.spacing) : Vector2.zero);
+            var resolvedPad = pad ?? (group != null ? Copy(group.padding) : new RectOffset());
             if (group != null) UnityEngine.Object.DestroyImmediate(group);
 
             var grid = body.gameObject.AddComponent<GridLayoutGroup>();
-            grid.padding = pad;
-            grid.spacing = spacing;
+            grid.padding = resolvedPad;
+            grid.spacing = resolvedSpacing;
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = k_ReadoutColumns;
+            grid.constraintCount = columns;
             grid.cellSize = new Vector2(
-                (width - pad.left - pad.right - (k_ReadoutColumns - 1) * spacing.x) / k_ReadoutColumns,
+                (width - resolvedPad.left - resolvedPad.right - (columns - 1) * resolvedSpacing.x) / columns,
                 cell.y);
 
-            var rows = Mathf.CeilToInt(count / (float)k_ReadoutColumns);
-            var height = rows * cell.y + (rows - 1) * spacing.y + pad.top + pad.bottom;
+            var rows = Mathf.CeilToInt(count / (float)columns);
+            var height = rows * cell.y + (rows - 1) * resolvedSpacing.y + resolvedPad.top + resolvedPad.bottom;
 
             SetSize(body, new Vector2(width, height));
             return height;
@@ -1252,10 +1324,21 @@ namespace AN5.EditorTools
         // -----------------------------------------------------------------
         // Simulación XR en el editor
         // -----------------------------------------------------------------
+        /// El simulador solo sirve para probar en modo Play dentro del Editor sin
+        /// ponerse el visor: suplanta la cabeza y los mandos con teclado y ratón. Si
+        /// viaja al build de Quest sus dispositivos virtuales de XR compiten con los
+        /// reales por los mismos bindings, y el resultado es la vista pegada a la
+        /// cabeza y los mandos sin representar — ver EditorOnlyGameObject, que es lo
+        /// que lo saca del build sin sacarlo de la escena.
         static void SetUpSimulator(Scene scene)
         {
-            if (FindRoot(scene, "XR Interaction Simulator") != null)
+            var existing = FindRoot(scene, "XR Interaction Simulator");
+            if (existing != null)
+            {
+                if (existing.GetComponent<EditorOnlyGameObject>() == null)
+                    existing.AddComponent<EditorOnlyGameObject>();
                 return;
+            }
 
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(k_SimulatorPrefab);
             if (prefab == null)
@@ -1267,6 +1350,7 @@ namespace AN5.EditorTools
 
             var simulator = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
             simulator.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            simulator.AddComponent<EditorOnlyGameObject>();
         }
 
         // -----------------------------------------------------------------
@@ -1281,9 +1365,18 @@ namespace AN5.EditorTools
                 return;
             }
 
+            bool hasVrPanel = false;
             foreach (var behaviour in harness.GetComponents<MonoBehaviour>())
             {
-                if (behaviour == null || behaviour.GetType().Name != "MeasurementSession")
+                if (behaviour == null) continue;
+
+                if (behaviour.GetType().Name == "MeasurementHarnessVrPanel")
+                {
+                    hasVrPanel = true;
+                    continue;
+                }
+
+                if (behaviour.GetType().Name != "MeasurementSession")
                     continue;
 
                 var so = new SerializedObject(behaviour);
@@ -1292,6 +1385,23 @@ namespace AN5.EditorTools
                 // distingue estas medidas de las tomadas en el PC.
                 if (label != null) label.stringValue = "Quest2";
                 so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            // MeasurementHarnessVrPanel es lo que hace visible y operable el arnés
+            // dentro del visor (el panel OnGUI de MeasurementSession no se ve ahí, ver
+            // el comentario de esa clase) -- sin esto, autoRunOnStart era la única
+            // forma de correr las pruebas en Quest. Va por nombre y no por tipo, igual
+            // que el chequeo de arriba, para no acoplar este builder de escritorio al
+            // ensamblado del arnés.
+            if (!hasVrPanel)
+            {
+                var panelType = System.AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .FirstOrDefault(t => t.Name == "MeasurementHarnessVrPanel");
+                if (panelType != null)
+                    harness.AddComponent(panelType);
+                else
+                    Debug.LogWarning("[QuestSceneBuilder] No se encontró el tipo MeasurementHarnessVrPanel.");
             }
         }
 

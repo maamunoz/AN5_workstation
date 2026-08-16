@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 public class DPadCameraController : MonoBehaviour
@@ -27,7 +28,14 @@ public class DPadCameraController : MonoBehaviour
         GameObject dpad = null;
         foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
             if (t.name == "DPad_Orbit" && t.gameObject.activeInHierarchy) { dpad = t.gameObject; break; }
-        if (dpad == null) { Debug.LogError("[DPad] DPad_Orbit not found"); return; }
+        if (dpad == null)
+        {
+            // No es un fallo: QuestSceneBuilder.DisableDesktopOnly apaga DPad_Orbit
+            // entero en la Quest (este control es solo para orbitar la cámara de
+            // escritorio), así que faltar ahí es el caso normal y no un error real.
+            Debug.Log("[DPad] DPad_Orbit not found (normal en la Quest, ver DisableDesktopOnly).");
+            return;
+        }
 
         foreach (Transform child in dpad.transform)
         {
@@ -96,15 +104,26 @@ public class DPadCameraController : MonoBehaviour
 
     void Update()
     {
+        // Este controlador es solo para orbitar la cámara de escritorio con
+        // teclado/ratón; en la Quest no hay ninguno de los dos conectados y
+        // Keyboard.current/Mouse.current vienen null -- así que todo esto queda en
+        // no-op sin más, que es justo lo que hace falta ahí. La UnityEngine.Input
+        // vieja no vale para eso: con el Input System puesto como único manejador
+        // activo lanza InvalidOperationException en cuanto se la toca, en escritorio
+        // y en la Quest por igual, y como esto corre en Update() inundaba SecLog con
+        // la misma excepción cuadro a cuadro.
+        var keyboard = Keyboard.current;
+        var mouseDevice = Mouse.current;
+
         bool isTyping = EventSystem.current != null
                      && EventSystem.current.currentSelectedGameObject != null
                      && EventSystem.current.currentSelectedGameObject.GetComponent<InputField>() != null;
 
-        bool kUp    = !isTyping && Input.GetKey(KeyCode.W);
-        bool kDown  = !isTyping && Input.GetKey(KeyCode.S);
-        bool kLeft  = !isTyping && Input.GetKey(KeyCode.A);
-        bool kRight = !isTyping && Input.GetKey(KeyCode.D);
-        bool mouse  = Input.GetMouseButton(0) && !EventSystem.current.IsPointerOverGameObject();
+        bool kUp    = !isTyping && keyboard != null && keyboard.wKey.isPressed;
+        bool kDown  = !isTyping && keyboard != null && keyboard.sKey.isPressed;
+        bool kLeft  = !isTyping && keyboard != null && keyboard.aKey.isPressed;
+        bool kRight = !isTyping && keyboard != null && keyboard.dKey.isPressed;
+        bool mouse  = mouseDevice != null && mouseDevice.leftButton.isPressed && !EventSystem.current.IsPointerOverGameObject();
 
         bool anyPressed = kUp || kDown || kLeft || kRight || mouse
                        || (_btnUp    != null && _btnUp.isPressed)
@@ -115,7 +134,10 @@ public class DPadCameraController : MonoBehaviour
         if (anyPressed && !_wasAnyPressed)
             SyncOrbit();
 
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        // Mouse.current.scroll viene en "notches * 120" (delta crudo de rueda en
+        // Windows), no en la escala ~0.1/notch de la vieja Input.GetAxis; se divide
+        // para que scrollSensitivity siga sintiéndose igual que antes.
+        float scroll = mouseDevice != null ? mouseDevice.scroll.ReadValue().y / 1200f : 0f;
         if (scroll != 0f)
         {
             if (!anyPressed) SyncOrbit();
@@ -135,8 +157,13 @@ public class DPadCameraController : MonoBehaviour
 
         if (mouse)
         {
-            _pitch -= Input.GetAxis("Mouse Y") * mouseSensitivity;
-            _yaw   += Input.GetAxis("Mouse X") * mouseSensitivity;
+            // Mouse.current.delta es el desplazamiento en px crudos del cuadro, sin la
+            // escala ~0.1 que traía la vieja Input.GetAxis -- mouseSensitivity puede
+            // necesitar retocarse, pero mouse ya viene en null-checked por keyboard/
+            // mouseDevice arriba, así que esto no revienta sin ratón.
+            var delta = mouseDevice.delta.ReadValue();
+            _pitch -= delta.y * mouseSensitivity;
+            _yaw   += delta.x * mouseSensitivity;
         }
 
         ApplyOrbit();

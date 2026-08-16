@@ -24,23 +24,28 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 public class VrWindowGrab : MonoBehaviour
 {
     [Header("Asa")]
-    [Tooltip("Rótulo del asa. Va girado 90°, que es como cae en una tira vertical.")]
-    public string label = "MOVER";
-
-    // El asa se mide en METROS y no en px del canvas, al revés que todo lo demás de una
-    // ventana. Es lo que se coge con la mano, así que lo que tiene que ser igual en todas
-    // es su tamaño real, y cada ventana va a una escala muy distinta: SecTraj a 0.00184
-    // m/px y Panel_trayectorias a 0.0009, o sea que un asa de 96 px saldría de 17.7 cm en
-    // una y de 8.6 en la otra. Build() los pasa a px con la escala de la propia ventana.
-    [Tooltip("Ancho del asa, en metros.")]
-    public float barWidth = 0.18f;
-
+    // La separación sí se mide en METROS y no en px del canvas, al revés que el resto de
+    // la franja: cada ventana va a una escala muy distinta (SecTraj a 0.00184 m/px y
+    // Panel_trayectorias a 0.0009) y lo que tiene que quedar igual de aire en todas es el
+    // hueco real entre el contenido y el asa. El ancho y el alto de la franja, en cambio,
+    // se sacan del propio rect en Build() -- ver k_BarWidthFraction y k_BarHeightFraction
+    // -- así que no hacen falta en metros.
     [Tooltip("Separación entre el contenido de la ventana y el asa, en metros.")]
-    public float barGap = 0.02f;
+    public float barGap = 0.012f;
 
     [Tooltip("Grosor de la caja de agarre, en metros. Es lo que sobresale hacia el " +
              "operador para que la mano tenga volumen que tocar; el asa se dibuja plana.")]
     public float grabDepth = 0.09f;
+
+    [Tooltip("Si se deja puesto, el asa se cuelga del borde inferior de ESTE rect en vez " +
+             "de el de toda la ventana (ver ContentBounds) -- para cuando la ventana tiene, " +
+             "al lado de la sección a la que de verdad quiere quedar pegada el asa, otra " +
+             "pieza que crece de alto y correría el asa cuadro a cuadro. QuestSceneBuilder " +
+             "lo usa para Panel_trayectorias: el asa cuelga de SecCartInput (el panel " +
+             "cartesiano) y no del panel de la cola de coordenadas, que crece con cada " +
+             "punto que se agrega. Solo manda en el alto de la posición: el ancho y el " +
+             "centrado en X siguen saliendo de toda la ventana, ver Build().")]
+    public RectTransform boundsAnchor;
 
     [Header("Límites de colocación")]
     [Tooltip("Altura mínima del centro de la ventana, en metros. Impide dejarla bajo el suelo.")]
@@ -49,21 +54,25 @@ public class VrWindowGrab : MonoBehaviour
     [Tooltip("Altura máxima del centro de la ventana, en metros.")]
     public float maxHeight = 2.2f;
 
-    // El asa va en el costado derecho y no arriba a propósito, y en las dos ventanas que
-    // la llevan hoy sale del mismo sitio por motivos distintos (huellas medidas sobre la
-    // escena, no calculadas, como pide docs/quest_test_arnes.md):
-    //
-    // - SecTraj está encajada entre el robot, que empieza en -22° de elevación, y el
-    //   footer, cuyas esquinas suben a -34.4°: por arriba o por abajo, la tira se comería
-    //   uno de esos dos márgenes. A lo ancho sobra: pasa de ±12.8° de azimut a 23.6°.
-    // - Panel_trayectorias tiene sitio arriba y abajo, pero no a la izquierda: ahí está la
-    //   pantalla de lecturas de la pared, que acaba en 28.5°, y el panel ya empieza en
-    //   29.0°. Con el asa a la izquierda bajaría a 23.9° y le taparía una esquina (las
-    //   elevaciones se solapan entre -1.3° y 1.4°). A la derecha pasa de 71.0° a 76.1°,
-    //   con LeftPanel empezando en 80.3°.
-    static readonly Color k_Idle = new Color(0.11f, 0.13f, 0.16f, 0.96f);
-    static readonly Color k_Hover = new Color(0.16f, 0.22f, 0.28f, 0.98f);
-    static readonly Color k_Held = new Color(0.06f, 0.35f, 0.29f, 0.98f);
+    // Abajo y centrada a lo ancho, sin rótulo: una franja azul bien visible justo debajo
+    // del contenido, sin ocupar sitio a los costados (donde SecTraj y Panel_trayectorias sí
+    // tienen otras ventanas cerca, ver los comentarios de QuestSceneBuilder sobre el
+    // reparto angular). Un tercio del ancho de la ventana y no el ancho entero: alcanza
+    // para agarrarla y dice claramente "esto es un asa", no "esto es el borde de la
+    // ventana". Se saca del ancho de toda la ventana (ContentBounds), no del de
+    // boundsAnchor cuando lo hay -- si no, en Panel_trayectorias el asa saldría del ancho
+    // angosto de SecCartInput y quedaría diminuta.
+    const float k_BarWidthFraction = 1f / 3f;
+
+    // El alto es una fracción del propio ancho del asa y no un tamaño fijo en metros: así
+    // la franja mantiene la misma proporción alargada sea cual sea la ventana, en vez de
+    // quedar gruesa en las ventanas angostas y fina en las anchas. 1/15 y no 1/5: a 1/5
+    // quedaba demasiado gruesa.
+    const float k_BarHeightFraction = 1f / 15f;
+
+    static readonly Color k_Idle = new Color(0.15f, 0.40f, 0.80f, 0.92f);
+    static readonly Color k_Hover = new Color(0.22f, 0.52f, 0.92f, 0.96f);
+    static readonly Color k_Held = new Color(0.30f, 0.65f, 1.00f, 1.00f);
 
     Image _bar;
     XRSimpleInteractable _interactable;
@@ -169,16 +178,48 @@ public class VrWindowGrab : MonoBehaviour
     void Build()
     {
         var window = (RectTransform)transform;
-        var content = ContentBounds(window);
+
+        // Sin esto, medir aquí en Start() lee la jerarquía a medio asentar: los
+        // VerticalLayoutGroup/HorizontalLayoutGroup de CenterBottom, JogRow, JogColumn
+        // etc. no recalculan sus rects al vuelo, sino que Unity los encola y los resuelve
+        // una vez por fotograma, DESPUÉS de que corren todos los Start() -- no durante
+        // ellos. El primer Build() de la sesión llegaba antes de esa pasada y calculaba
+        // el asa contra rects transitorios (a veces con el propio CenterBottom todavía
+        // en su alto viejo), dando un tamaño y una posición sin relación con el panel
+        // real; unos fotogramas después, con el layout ya asentado, todo medía bien --
+        // pero el asa ya había nacido mal y se quedaba así. Vaciar la cola a mano antes
+        // de medir dejaba a ContentBounds/CalculateRelativeRectTransformBounds leer el
+        // layout ya resuelto, igual que hace TrajectoryFileList.Refresh() para el mismo
+        // problema con el ajuste de línea del texto.
+        Canvas.ForceUpdateCanvases();
+
+        // Dos cajas distintas y no una: el TAMAÑO sale siempre de TODA la ventana
+        // (totalBounds), pero el CENTRADO EN X Y el borde en Y salen de boundsAnchor
+        // cuando lo hay. Para Panel_trayectorias eso significa un asa ancha (1/3 del
+        // panel entero) pero centrada sobre SecCartInput y colgando justo debajo de él,
+        // no del panel de la cola, que crece con cada punto que se agrega -- ver
+        // boundsAnchor. Centrar en totalBounds.center.x en vez de en el propio
+        // SecCartInput la dejaba a 126px a la derecha de donde tenía que estar: la fila
+        // completa (JogColumn + la cola al lado) es más ancha que SecCartInput solo, y su
+        // centro no coincide con el de SecCartInput.
+        var totalBounds = ContentBounds(window);
+        var anchorBounds = boundsAnchor != null
+            ? RectTransformUtility.CalculateRelativeRectTransformBounds(window, boundsAnchor)
+            : totalBounds;
 
         // Escala px -> m del canvas de esta ventana (se la pone QuestSceneBuilder con el
         // pixelToMeter de su fila). Si la ventana no estuviera escalada, sus px ya serían
         // metros y no hay nada que convertir.
         var scale = window.lossyScale.x;
         if (scale < 1e-6f) scale = 1f;
-        var widthPx = barWidth / scale;
         var gapPx = barGap / scale;
         var depthPx = grabDepth / scale;
+
+        // Un tercio del ancho de la ventana, y el alto un quinto de ese ancho: una franja
+        // horizontal corta y alargada, no una tira que corra de punta a punta ni un
+        // cuadrado.
+        var barWidth = totalBounds.size.x * k_BarWidthFraction;
+        var barHeight = barWidth * k_BarHeightFraction;
 
         var go = new GameObject("Grab Handle", typeof(RectTransform));
         var bar = (RectTransform)go.transform;
@@ -186,22 +227,24 @@ public class VrWindowGrab : MonoBehaviour
         bar.anchorMin = new Vector2(0.5f, 0.5f);
         bar.anchorMax = new Vector2(0.5f, 0.5f);
         bar.pivot = new Vector2(0.5f, 0.5f);
-        bar.sizeDelta = new Vector2(widthPx, content.size.y);
+        bar.sizeDelta = new Vector2(barWidth, barHeight);
 
         // El ancla está en el centro del rect de la ventana, que no tiene por qué caer en
         // el centro de lo que la ventana dibuja: las secciones heredadas de AN5_sim traen
-        // el rect de la maquetación de escritorio con zonas vacías dentro.
-        var center = new Vector2(content.max.x + gapPx + widthPx * 0.5f, content.center.y);
+        // el rect de la maquetación de escritorio con zonas vacías dentro. Centrada en X
+        // y pegada al borde inferior en Y, las dos sobre boundsAnchor (o toda la ventana
+        // si no hay).
+        var center = new Vector2(anchorBounds.center.x, anchorBounds.min.y - gapPx - barHeight * 0.5f);
         bar.anchoredPosition = center - window.rect.center;
 
         _bar = go.AddComponent<Image>();
+        _bar.sprite = VrUiKit.RoundedRectSprite();
+        _bar.type = Image.Type.Sliced;
         _bar.color = k_Idle;
         // El agarre entra por el collider, no por el raycaster de UI. Si el asa fuese
         // además blanco de UI, el rayo tendría dos cosas que golpear en el mismo sitio y
         // la de UI, que queda por delante, le ganaría al collider.
         _bar.raycastTarget = false;
-
-        MakeLabel(bar, widthPx);
 
         // Los interactores del rig disparan sus rayos contra las capas Default y UI. El
         // canvas de la ventana viene de AN5_sim y puede estar en cualquiera de ellas, así
@@ -209,7 +252,7 @@ public class VrWindowGrab : MonoBehaviour
         go.layer = 0;
 
         var box = go.AddComponent<BoxCollider>();
-        box.size = new Vector3(widthPx, content.size.y, depthPx);
+        box.size = new Vector3(barWidth, barHeight, depthPx);
         // Un canvas se ve desde su cara -Z, así que el volumen sobresale hacia ahí: hacia
         // el lado por el que llega la mano.
         box.center = new Vector3(0f, 0f, -depthPx * 0.5f);
@@ -223,31 +266,6 @@ public class VrWindowGrab : MonoBehaviour
         _interactable.selectExited.AddListener(OnSelectExited);
         _interactable.hoverEntered.AddListener(OnHoverEntered);
         _interactable.hoverExited.AddListener(OnHoverExited);
-    }
-
-    void MakeLabel(RectTransform bar, float widthPx)
-    {
-        var go = new GameObject("Text", typeof(RectTransform));
-        var rect = (RectTransform)go.transform;
-        rect.SetParent(bar, worldPositionStays: false);
-        rect.anchorMin = new Vector2(0.5f, 0.5f);
-        rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        // Tumbado: se mide a lo largo de la tira y se gira un cuarto de vuelta, así que el
-        // rótulo se lee de abajo arriba.
-        rect.sizeDelta = new Vector2(bar.sizeDelta.y, bar.sizeDelta.x);
-        rect.anchoredPosition = Vector2.zero;
-        rect.localRotation = Quaternion.Euler(0f, 0f, 90f);
-
-        var text = go.AddComponent<Text>();
-        text.font = ResolveFont();
-        text.fontSize = Mathf.RoundToInt(widthPx * 0.45f);
-        text.alignment = TextAnchor.MiddleCenter;
-        text.color = Color.white;
-        text.text = label;
-        text.horizontalOverflow = HorizontalWrapMode.Overflow;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
-        text.raycastTarget = false;
     }
 
     /// Caja de lo que la ventana dibuja de verdad, en su espacio local: la unión de sus
@@ -272,17 +290,5 @@ public class VrWindowGrab : MonoBehaviour
             bounds = new Bounds(window.rect.center, window.rect.size);
 
         return bounds;
-    }
-
-    /// Reutiliza la fuente que ya use la UI de la aplicación, igual que VrKeyboard: así el
-    /// asa no desentona y no se depende del nombre de los recursos internos de Unity, que
-    /// ha cambiado entre versiones.
-    static Font ResolveFont()
-    {
-        foreach (var text in FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            if (text.font != null) return text.font;
-
-        var builtin = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        return builtin != null ? builtin : Resources.GetBuiltinResource<Font>("Arial.ttf");
     }
 }

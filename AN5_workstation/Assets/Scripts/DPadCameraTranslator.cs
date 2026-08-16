@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 public class DPadCameraTranslator : MonoBehaviour
@@ -17,7 +18,14 @@ public class DPadCameraTranslator : MonoBehaviour
         GameObject dpad = null;
         foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
             if (t.name == "DPad_Translate" && t.gameObject.activeInHierarchy) { dpad = t.gameObject; break; }
-        if (dpad == null) { Debug.LogError("[DPadTranslate] DPad_Translate not found"); return; }
+        if (dpad == null)
+        {
+            // No es un fallo: QuestSceneBuilder.DisableDesktopOnly apaga DPad_Translate
+            // entero en la Quest (este control es solo para trasladar la cámara de
+            // escritorio), así que faltar ahí es el caso normal y no un error real.
+            Debug.Log("[DPadTranslate] DPad_Translate not found (normal en la Quest, ver DisableDesktopOnly).");
+            return;
+        }
 
         foreach (Transform child in dpad.transform)
         {
@@ -36,15 +44,23 @@ public class DPadCameraTranslator : MonoBehaviour
 
     void Update()
     {
+        // Igual que DPadCameraController: solo escritorio, y Keyboard.current/
+        // Mouse.current vienen null en la Quest sin teclado/ratón -- todo esto queda
+        // en no-op ahí. La UnityEngine.Input vieja lanzaba InvalidOperationException
+        // en cuanto se la tocaba, cuadro a cuadro, con el Input System como único
+        // manejador activo.
+        var keyboard = Keyboard.current;
+        var mouseDevice = Mouse.current;
+
         bool isTyping = EventSystem.current != null
                      && EventSystem.current.currentSelectedGameObject != null
                      && EventSystem.current.currentSelectedGameObject.GetComponent<InputField>() != null;
 
-        bool kUp    = !isTyping && Input.GetKey(KeyCode.UpArrow);
-        bool kDown  = !isTyping && Input.GetKey(KeyCode.DownArrow);
-        bool kLeft  = !isTyping && Input.GetKey(KeyCode.LeftArrow);
-        bool kRight = !isTyping && Input.GetKey(KeyCode.RightArrow);
-        bool mouse  = Input.GetMouseButton(1) && !EventSystem.current.IsPointerOverGameObject();
+        bool kUp    = !isTyping && keyboard != null && keyboard.upArrowKey.isPressed;
+        bool kDown  = !isTyping && keyboard != null && keyboard.downArrowKey.isPressed;
+        bool kLeft  = !isTyping && keyboard != null && keyboard.leftArrowKey.isPressed;
+        bool kRight = !isTyping && keyboard != null && keyboard.rightArrowKey.isPressed;
+        bool mouse  = mouseDevice != null && mouseDevice.rightButton.isPressed && !EventSystem.current.IsPointerOverGameObject();
 
         bool anyPressed = kUp || kDown || kLeft || kRight || mouse
                        || (_btnUp    != null && _btnUp.isPressed)
@@ -68,8 +84,11 @@ public class DPadCameraTranslator : MonoBehaviour
 
         if (mouse)
         {
-            transform.position -= transform.right * (Input.GetAxis("Mouse X") * mouseSensitivity);
-            transform.position -= transform.up    * (Input.GetAxis("Mouse Y") * mouseSensitivity);
+            // Mouse.current.delta es px crudos del cuadro, no la escala ~0.1 de la
+            // vieja Input.GetAxis -- mouseSensitivity puede necesitar retocarse.
+            var delta = mouseDevice.delta.ReadValue();
+            transform.position -= transform.right * (delta.x * mouseSensitivity);
+            transform.position -= transform.up    * (delta.y * mouseSensitivity);
         }
     }
 }

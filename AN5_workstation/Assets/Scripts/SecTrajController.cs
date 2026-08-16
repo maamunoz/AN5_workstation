@@ -185,8 +185,21 @@ public class SecTrajController : MonoBehaviour
             if (cargarButton != null)
                 cargarButton.onClick.AddListener(() =>
                 {
-                    Debug.Log("[SecTrajController] Btn_CARGAR clicked — starting OpenFileDialog coroutine");
-                    StartCoroutine(OpenFileDialog());
+                    // No hay diálogo nativo de archivos en Android/Quest (ni tendría cómo
+                    // pintarse dentro de la sesión inmersiva de OpenXR aunque lo hubiera) --
+                    // ver el comentario de ShowNativeFileDialog. Ahí se usa en cambio
+                    // TrajectoryFileList, que cuelga al lado de esta misma ventana y se lee
+                    // con el rayo de los mandos.
+                    if (Application.platform == RuntimePlatform.Android)
+                    {
+                        Debug.Log("[SecTrajController] Btn_CARGAR clicked (Android) — toggling file list");
+                        ToggleAndroidFileList();
+                    }
+                    else
+                    {
+                        Debug.Log("[SecTrajController] Btn_CARGAR clicked — starting OpenFileDialog coroutine");
+                        StartCoroutine(OpenFileDialog());
+                    }
                 });
             execButton  ?.onClick.AddListener(OnExec);
             pauseButton ?.onClick.AddListener(OnPause);
@@ -208,9 +221,50 @@ public class SecTrajController : MonoBehaviour
 
     private bool _listenersWired;
 
+    // Dónde viven los archivos de trayectorias. En escritorio, la carpeta "routines" al
+    // lado del ejecutable (para que sea fácil de encontrar y copiar cosas a mano). En
+    // Android no hay un "al lado del .apk" utilizable: persistentDataPath es la única
+    // carpeta de la app que Unity puede leer/escribir sin permisos extra en cualquier
+    // versión de Android, y sigue siendo alcanzable desde una PC por USB/adb sin rootear
+    // el visor -- ver el aviso que registra LoadByTypedFileName cuando no encuentra nada
+    // ahí, que imprime esta misma ruta resuelta.
+    private static string GetRoutinesDir()
+    {
+        string dir = Application.platform == RuntimePlatform.Android
+            ? Path.Combine(Application.persistentDataPath, "routines")
+            : Path.GetFullPath(Path.Combine(Application.dataPath, "..", "routines"));
+
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// Sustituto de OpenFileDialog para Android: sin diálogo nativo de archivos (no hay
+    /// uno, y aunque lo hubiera no se pintaría dentro de la sesión inmersiva de OpenXR),
+    /// esto abre/cierra TrajectoryFileList colgada al lado de esta ventana, con un botón
+    /// por archivo encontrado en GetRoutinesDir() -- tocable con el rayo de los mandos.
+    /// Los archivos llegan ahí copiándolos por USB con
+    /// `adb push archivo.txt "<GetRoutinesDir()>"` mientras la app está corriendo; la
+    /// lista se relee del disco cada vez que se abre o se toca su botón "Refrescar", así
+    /// que no hace falta reinstalar nada para verlos.
+    private void ToggleAndroidFileList()
+    {
+        var windowRoot = (RectTransform)transform;
+        if (TrajectoryFileList.IsVisible(windowRoot))
+        {
+            TrajectoryFileList.Hide(windowRoot);
+            return;
+        }
+
+        TrajectoryFileList.Show(windowRoot, GetRoutinesDir(), chosen =>
+        {
+            Debug.Log($"[SecTrajController] Archivo elegido de la lista: {chosen}");
+            StartCoroutine(LoadTrajectoryFile(chosen));
+        });
+    }
+
     private IEnumerator OpenFileDialog()
     {
-        string routinesDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "routines"));
+        string routinesDir = GetRoutinesDir();
         string chosen = "";
         bool   done   = false;
 

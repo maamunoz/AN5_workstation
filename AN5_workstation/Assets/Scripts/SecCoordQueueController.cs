@@ -112,7 +112,13 @@ public class SecCoordQueueController : MonoBehaviour
 
         if (velSlider == null)
         {
-            velSlider = body.Find("Vel/S")?.GetComponent<Slider>();
+            // Vel ya no cuelga de este Body: QuestSceneBuilder.ReflowJointsAndCart lo
+            // saca de en medio de los joints para la rejilla de 3 columnas, y
+            // PairQueueWithJog lo reparenta a VelQueueColumn, hermano de JogColumn --
+            // los dos cuelgan de JogRow, tres niveles arriba de este Body
+            // (Body -> SecJoints -> JogColumn -> JogRow).
+            var jogRow = body.parent?.parent?.parent;
+            velSlider = jogRow?.Find("VelQueueColumn/Vel/S")?.GetComponent<Slider>();
             if (velSlider == null)
                 Debug.LogWarning("[SecCoordQueueController] Vel slider not found.");
         }

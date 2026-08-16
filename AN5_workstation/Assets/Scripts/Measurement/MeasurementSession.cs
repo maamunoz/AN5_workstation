@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using RosSharp.RosBridgeClient;
 
 namespace AN5.Measurement
@@ -72,7 +73,7 @@ namespace AN5.Measurement
                  "que la conexión se establezca.")]
         public float autoRunDelaySeconds = 10f;
         [Tooltip("Tecla que muestra u oculta el panel en pantalla.")]
-        public KeyCode togglePanelKey = KeyCode.F9;
+        public Key togglePanelKey = Key.F9;
 
         [Header("Posición del panel en pantalla")]
         [Tooltip("Borde izquierdo del panel, como fracción del ancho de pantalla " +
@@ -144,6 +145,19 @@ namespace AN5.Measurement
 
         void Awake()
         {
+            // togglePanelKey era KeyCode y pasó a ser Key (ver Update): Unity conserva
+            // el entero serializado viejo al cambiar el tipo de un campo, no lo resetea
+            // al default nuevo. KeyCode.F9 serializaba como 290, que cae fuera del rango
+            // del enum Key (mucho más corto) y hace explotar el indexador de Keyboard.
+            // Se detecta y se repone acá para no depender de limpiar a mano la escena.
+            if (!System.Enum.IsDefined(typeof(Key), togglePanelKey))
+            {
+                Debug.LogWarning($"[MeasurementSession] togglePanelKey traía un valor serializado " +
+                                  $"inválido ({(int)togglePanelKey}, sobrante de cuando el campo era " +
+                                  $"KeyCode); repuesto a F9.");
+                togglePanelKey = Key.F9;
+            }
+
             ResolveAppComponents();
             RunDirectory = CreateRunDirectory();
             GetComponents(_tests);
@@ -167,7 +181,13 @@ namespace AN5.Measurement
 
         void Update()
         {
-            if (Input.GetKeyDown(togglePanelKey))
+            // Keyboard.current es null sin teclado físico conectado -- el caso normal
+            // en la Quest. La UnityEngine.Input vieja no vale: con el Input System
+            // puesto como único manejador activo (ver Project Settings), cualquier
+            // llamada suya lanza InvalidOperationException, en escritorio y en la
+            // Quest por igual -- y como esto corre en Update(), inundaba SecLog con la
+            // misma excepción cuadro a cuadro.
+            if (Keyboard.current != null && Keyboard.current[togglePanelKey].wasPressedThisFrame)
                 _panelVisible = !_panelVisible;
         }
 
