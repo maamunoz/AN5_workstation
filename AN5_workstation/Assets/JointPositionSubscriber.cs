@@ -221,6 +221,19 @@ public class JointPositionSubscriber : UnitySubscriber<RosString>
             }
             else if (freezeMode && computedMaxDiff < freezeThresholdDeg)
             {
+                // FIX: esta rama existe para no reescribir el URDF ante cambios
+                // minúsculos (ver el tooltip de freezeMode: "solo actualiza el
+                // URDF cuando la diferencia > freezeThresholdDeg") -- es una
+                // decisión sobre el MODELO VISUAL, no sobre qué posición se
+                // considera conocida. Antes retornaba sin actualizar
+                // lastPositions, así que GetLastKnownPositions() se quedaba
+                // con un valor de mitad de movimiento, desfasado hasta
+                // freezeThresholdDeg (0.5° por defecto) del real -- causaba
+                // que P6JointAccuracy (y cualquier otra espera de llegada que
+                // dependa de GetLastKnownPositions(), como
+                // SecTrajController/SecCoordQueueController) leyera un
+                // "alcanzado" que nunca circuló como estado final real.
+                lastPositions = newPositions;
                 OnJointPositionsUpdated?.Invoke(newPositions);
                 return;
             }

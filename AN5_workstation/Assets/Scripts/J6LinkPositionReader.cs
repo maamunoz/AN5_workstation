@@ -16,7 +16,13 @@ using UnityEngine;
             public InputField inputY;
             public InputField inputZ;
         
-            const string TARGET_NAME  = "j6_link";
+            // Capital L matters: the URDF importer keeps the link name verbatim, and
+            // the URDF declares name="j6_Link" (frcobot_description/urdf/fr5v6.urdf:401).
+            // This used to read "j6_link", and since both lookups below are
+            // case-sensitive it never matched: Start() silently left j6Link null and
+            // Update() then re-scanned the whole scene every single frame, forever,
+            // while the X/Y/Z fields were never written to.
+            const string TARGET_NAME  = "j6_Link";
             const string COORD_PATH_X = "Panels/RightPanel/Content/SecCoord/Body/Row_X/Input_X";
             const string COORD_PATH_Y = "Panels/RightPanel/Content/SecCoord/Body/Row_Y/Input_Y";
             const string COORD_PATH_Z = "Panels/RightPanel/Content/SecCoord/Body/Row_Z/Input_Z";
@@ -32,7 +38,7 @@ using UnityEngine;
                 }
         
                 if (j6Link == null)
-                    Debug.LogWarning("[J6LinkPositionReader] j6_link not found yet — will retry in Update");
+                    Debug.LogWarning($"[J6LinkPositionReader] {TARGET_NAME} not found yet — will retry in Update");
         
                 // Resolve InputFields by path
                 if (inputX == null) inputX = GameObject.Find(COORD_PATH_X)?.GetComponent<InputField>();
@@ -52,7 +58,7 @@ using UnityEngine;
                 {
                     j6Link = GameObject.Find(TARGET_NAME)?.transform;
                     if (j6Link == null) return;
-                    Debug.Log($"[J6LinkPositionReader] j6_link found at runtime: {j6Link.position}");
+                    Debug.Log($"[J6LinkPositionReader] {TARGET_NAME} found at runtime: {j6Link.position}");
                 }
         
                 if (inputX == null || inputY == null || inputZ == null) return;

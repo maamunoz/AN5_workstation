@@ -25,7 +25,6 @@ namespace RosSharp.RosBridgeClient
         public float TimeStep;
 
         private RosConnector rosConnector;
-        private readonly int SecondsTimeout = 1;
 
         protected virtual void Start()
         {
@@ -35,9 +34,29 @@ namespace RosSharp.RosBridgeClient
 
         private void Subscribe()
         {
+            // FIX: esto esperaba la conexión con un timeout fijo de 1s y, si se
+            // vencía, igual llamaba a rosConnector.RosSocket.Subscribe() -- en el
+            // flujo normal (la escena carga, recién después el usuario escribe la
+            // IP y conecta) ese segundo casi siempre se agota con RosSocket
+            // todavía en null, así que esto tiraba una NullReferenceException en
+            // este hilo de fondo -- silenciosa, no aparece en la consola de la
+            // app -- y la suscripción real nunca llegaba a ocurrir. Los watchers
+            // de reconexión de las subclases (JointPositionSubscriber,
+            // CartesianPositionSubscriber, InverseKinematicsSubscriber,
+            // RobotMotionDoneSubscriber, SetpointCartesianPositionSubscriber)
+            // asumen que esta primera suscripción sí ocurrió y por diseño solo
+            // actúan ante cambios posteriores de RosSocket, así que el robot se
+            // quedaba sin actualizar posiciones hasta una SEGUNDA reconexión.
+            // Se espera indefinidamente a la conexión real, igual que ya hace
+            // Ros2CommandSender.WaitForConnectionAndAdvertise() del lado de
+            // publicación, y se valida RosSocket antes de usarlo por si acaso.
+            rosConnector.IsConnected.WaitOne();
 
-            if (!rosConnector.IsConnected.WaitOne(SecondsTimeout * 1000))
-                Debug.LogWarning("Failed to subscribe: RosConnector not connected");
+            if (rosConnector.RosSocket == null)
+            {
+                Debug.LogWarning("Failed to subscribe: RosSocket is null after connecting");
+                return;
+            }
 
             rosConnector.RosSocket.Subscribe<T>(Topic, ReceiveMessage, (int)(TimeStep * 1000)); // the rate(in ms in between messages) at which to throttle the topics
         }

@@ -93,6 +93,16 @@ public class SecTrajController : MonoBehaviour
         return s_liveCartesianSetpoint != null ? (float[])s_liveCartesianSetpoint.Clone() : null;
     }
 
+    /// Fires when ResolveJointTrajectory() finishes, with (point count, seconds taken,
+    /// succeeded). Instrumentation only -- nothing in the application subscribes; it
+    /// exists so the measurement harness (Assets/Scripts/Measurement, test P10) can
+    /// time the real preparation path instead of a reimplementation.
+    ///
+    /// Static for the same reason s_liveCartesianSetpoint above is: the scene carries
+    /// several duplicate "SecTraj" GameObjects and only one ever gets its buttons
+    /// wired, so an outside subscriber has no reliable way to pick the live instance.
+    public static event System.Action<int, double, bool> TrajectoryResolved;
+
     // InverseKinematicsSubscriber.ReceiveMessage() fires on RosSharp's websocket
     // network thread, not Unity's main thread -- same hazard SecCartInputController
     // already works around. Writing here only queues the raw payload; the actual
@@ -175,8 +185,21 @@ public class SecTrajController : MonoBehaviour
             if (cargarButton != null)
                 cargarButton.onClick.AddListener(() =>
                 {
-                    Debug.Log("[SecTrajController] Btn_CARGAR clicked — starting OpenFileDialog coroutine");
-                    StartCoroutine(OpenFileDialog());
+                    // No hay diálogo nativo de archivos en Android/Quest (ni tendría cómo
+                    // pintarse dentro de la sesión inmersiva de OpenXR aunque lo hubiera) --
+                    // ver el comentario de ShowNativeFileDialog. Ahí se usa en cambio
+                    // TrajectoryFileList, que cuelga al lado de esta misma ventana y se lee
+                    // con el rayo de los mandos.
+                    if (Application.platform == RuntimePlatform.Android)
+                    {
+                        Debug.Log("[SecTrajController] Btn_CARGAR clicked (Android) — toggling file list");
+                        ToggleAndroidFileList();
+                    }
+                    else
+                    {
+                        Debug.Log("[SecTrajController] Btn_CARGAR clicked — starting OpenFileDialog coroutine");
+                        StartCoroutine(OpenFileDialog());
+                    }
                 });
             execButton  ?.onClick.AddListener(OnExec);
             pauseButton ?.onClick.AddListener(OnPause);
@@ -198,9 +221,50 @@ public class SecTrajController : MonoBehaviour
 
     private bool _listenersWired;
 
+    // Dónde viven los archivos de trayectorias. En escritorio, la carpeta "routines" al
+    // lado del ejecutable (para que sea fácil de encontrar y copiar cosas a mano). En
+    // Android no hay un "al lado del .apk" utilizable: persistentDataPath es la única
+    // carpeta de la app que Unity puede leer/escribir sin permisos extra en cualquier
+    // versión de Android, y sigue siendo alcanzable desde una PC por USB/adb sin rootear
+    // el visor -- ver el aviso que registra LoadByTypedFileName cuando no encuentra nada
+    // ahí, que imprime esta misma ruta resuelta.
+    private static string GetRoutinesDir()
+    {
+        string dir = Application.platform == RuntimePlatform.Android
+            ? Path.Combine(Application.persistentDataPath, "routines")
+            : Path.GetFullPath(Path.Combine(Application.dataPath, "..", "routines"));
+
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// Sustituto de OpenFileDialog para Android: sin diálogo nativo de archivos (no hay
+    /// uno, y aunque lo hubiera no se pintaría dentro de la sesión inmersiva de OpenXR),
+    /// esto abre/cierra TrajectoryFileList colgada al lado de esta ventana, con un botón
+    /// por archivo encontrado en GetRoutinesDir() -- tocable con el rayo de los mandos.
+    /// Los archivos llegan ahí copiándolos por USB con
+    /// `adb push archivo.txt "<GetRoutinesDir()>"` mientras la app está corriendo; la
+    /// lista se relee del disco cada vez que se abre o se toca su botón "Refrescar", así
+    /// que no hace falta reinstalar nada para verlos.
+    private void ToggleAndroidFileList()
+    {
+        var windowRoot = (RectTransform)transform;
+        if (TrajectoryFileList.IsVisible(windowRoot))
+        {
+            TrajectoryFileList.Hide(windowRoot);
+            return;
+        }
+
+        TrajectoryFileList.Show(windowRoot, GetRoutinesDir(), chosen =>
+        {
+            Debug.Log($"[SecTrajController] Archivo elegido de la lista: {chosen}");
+            StartCoroutine(LoadTrajectoryFile(chosen));
+        });
+    }
+
     private IEnumerator OpenFileDialog()
     {
-        string routinesDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "routines"));
+        string routinesDir = GetRoutinesDir();
         string chosen = "";
         bool   done   = false;
 
@@ -219,6 +283,24 @@ public class SecTrajController : MonoBehaviour
         Debug.Log($"[SecTrajController] Dialog done. chosen='{chosen}'");
 
         if (string.IsNullOrEmpty(chosen) || !File.Exists(chosen)) yield break;
+
+        yield return StartCoroutine(LoadTrajectoryFile(chosen));
+    }
+
+    /// Loads and IK-resolves a trajectory file by path -- everything the CARGAR button
+    /// does once a file has actually been chosen. Split out of OpenFileDialog (which
+    /// now just picks the path and delegates here) so the same code path can be driven
+    /// programmatically: the measurement harness (Assets/Scripts/Measurement, test P10)
+    /// times trajectory preparation, and the native file dialog can't be operated from
+    /// code, so without this it would have had to reimplement the load in parallel and
+    /// would then be timing a copy rather than the real thing.
+    public IEnumerator LoadTrajectoryFile(string chosen)
+    {
+        if (string.IsNullOrEmpty(chosen) || !File.Exists(chosen))
+        {
+            Debug.LogWarning($"[SecTrajController] Archivo inexistente: '{chosen}'");
+            yield break;
+        }
 
         // Cancel any run still in progress from a PREVIOUSLY loaded file before
         // touching _points/_jointPoints -- see StopExecutionIfRunning's comment for
@@ -279,6 +361,20 @@ public class SecTrajController : MonoBehaviour
     // practice (no real joint-limit/collision model) that this switched back to
     // letting ROS/MATLAB solve it, which already has that validation in production.
     private IEnumerator ResolveJointTrajectory()
+    {
+        // Thin timing wrapper around the real work, kept separate so the body below
+        // stays exactly as it was. Reports to the measurement harness (test P10) how
+        // long preparing this file took; nothing in the application listens.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        int requestedPoints = _points.Count;
+
+        yield return StartCoroutine(ResolveJointTrajectoryCore());
+
+        stopwatch.Stop();
+        TrajectoryResolved?.Invoke(requestedPoints, stopwatch.Elapsed.TotalSeconds, _resolveSucceeded);
+    }
+
+    private IEnumerator ResolveJointTrajectoryCore()
     {
         _resolveSucceeded = false;
 

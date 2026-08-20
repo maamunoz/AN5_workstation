@@ -52,6 +52,19 @@ namespace RosSharp.RosBridgeClient
         private bool isReconnecting = false;
         private Thread connectionThread;
 
+        // Cancelación cooperativa del hilo de auto-reconexión: Thread.Abort() (más
+        // abajo) no existe en IL2CPP -- el backend de scripting obligatorio para
+        // Android/Quest -- así que ahí tirar Abort() lanzaba
+        // PlatformNotSupportedException apenas se llamaba. La excepción abortaba
+        // ReconnectNow() a mitad de camino: el socket viejo a veces ni se cerraba, y
+        // el hilo de auto-reconexión seguía vivo de fondo y podía pisar el RosSocket
+        // nuevo con uno propio al despertar de su Sleep/WaitOne -- el robot dejaba de
+        // actualizar posiciones tras cambiar la IP, sin ninguna forma de recuperarse
+        // sin reiniciar la app. En vez de abortar, cada hilo que arranca revisa esta
+        // marca de generación antes de cada vuelta del bucle y de tocar RosSocket; si
+        // ya no es la generación vigente, se retira solo.
+        private volatile int _connectionGeneration = 0;
+
         public virtual void Awake()
         {
             IsConnected = new ManualResetEvent(false);
@@ -89,7 +102,9 @@ namespace RosSharp.RosBridgeClient
         // Bucle para auto-reconexión con un retardo (se inicia en Awake y en OnClosed)
         private void ConnectAndWait()
         {
-            while (true)
+            int myGeneration = _connectionGeneration;
+
+            while (myGeneration == _connectionGeneration)
             {
                 RosSocket = ConnectToRos(protocol, RosBridgeServerUrl, OnConnected, OnClosed, Serializer);
 
@@ -102,6 +117,10 @@ namespace RosSharp.RosBridgeClient
                     // Conexión exitosa, salir del bucle
                     break;
                 }
+
+                // Alguien pidió una reconexión mientras este hilo esperaba el timeout
+                // de conexión: se retira sin dormir ni volver a tocar RosSocket.
+                if (myGeneration != _connectionGeneration) return;
 
                 Debug.Log("Retrying connection in " + ReconnectDelaySeconds + " seconds...");
                 Thread.Sleep(ReconnectDelaySeconds * 1000);
@@ -132,12 +151,10 @@ namespace RosSharp.RosBridgeClient
         {
             Debug.Log("Manual reconnect now...");
 
-            // Cancelamos el hilo que pudiera estar en medio del bucle de auto reconexión
-            if (connectionThread != null && connectionThread.IsAlive)
-            {
-                Debug.Log("Aborting the auto-reconnect thread...");
-                connectionThread.Abort();
-            }
+            // Cancela cooperativamente el hilo que pudiera estar en medio del bucle de
+            // auto reconexión (ver el comentario de _connectionGeneration): sin
+            // Thread.Abort(), que no existe en IL2CPP/Quest.
+            _connectionGeneration++;
 
             // Cerramos el socket anterior si seguía abierto
             if (RosSocket != null)
@@ -178,6 +195,7 @@ namespace RosSharp.RosBridgeClient
             if (!isReconnecting)
             {
                 isReconnecting = true;
+                _connectionGeneration++;
                 connectionThread = new Thread(ConnectAndWait);
                 connectionThread.Start();
             }
@@ -193,11 +211,13 @@ namespace RosSharp.RosBridgeClient
 
         private void OnApplicationQuit()
         {
+            // La app se está cerrando igual, así que no hace falta esperar a que el
+            // hilo de fondo note la nueva generación y se retire solo -- alcanza con
+            // que no siga reconectando ni tocando el socket cerrado.
+            _connectionGeneration++;
+
             if (RosSocket != null)
                 RosSocket.Close();
-
-            if (connectionThread != null && connectionThread.IsAlive)
-                connectionThread.Abort();
         }
     }
 }

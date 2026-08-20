@@ -69,24 +69,33 @@ public class SecCoordQueueController : MonoBehaviour
         }
     }
 
+    private static readonly string[] jointNames =
+        { "Joint_BASE", "Joint_SHOULDER", "Joint_ELBOW", "Joint_WRIST 1", "Joint_WRIST 2", "Joint_WRIST 3" };
+
     private void ResolveSliders()
     {
-        // Find the active SecJoints in Panel_trayectorias
-        Transform secJoints = null;
+        // Bind to the SecJoints that actually carries the jog sliders, identified by
+        // having them. The scene holds three: Panel_trayectorias' has a Slider per joint
+        // (SecJointsSliderSync), while Panel_monitoreo's and Panel_ppal's are read-only
+        // readouts (SecJointsDisplay, no "S" child, and their boxes aren't even named the
+        // same). This used to sweep for the first *active* SecJoints, which worked only
+        // because the tabs took turns: exactly one was ever active. In the Quest scene
+        // every tab is visible at once, so that sweep could bind these controls to a
+        // readout that has no sliders at all. What this needs is the sliders, so that is
+        // what it looks for.
+        Transform body = null;
         foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
         {
-            if (t.name == "SecJoints" && t.gameObject.activeInHierarchy && t.gameObject.scene.IsValid())
-            {
-                secJoints = t;
-                break;
-            }
+            if (t.name != "SecJoints" || !t.gameObject.scene.IsValid()) continue;
+
+            var candidate = t.Find("Body");
+            if (candidate?.Find(jointNames[0] + "/S")?.GetComponent<Slider>() == null) continue;
+
+            body = candidate;
+            break;
         }
-        if (secJoints == null) { Debug.LogWarning("[SecCoordQueueController] Active SecJoints not found."); return; }
+        if (body == null) { Debug.LogWarning("[SecCoordQueueController] No SecJoints with jog sliders found."); return; }
 
-        var body = secJoints.Find("Body");
-        if (body == null) { Debug.LogWarning("[SecCoordQueueController] SecJoints/Body not found."); return; }
-
-        string[] jointNames = { "Joint_BASE", "Joint_SHOULDER", "Joint_ELBOW", "Joint_WRIST 1", "Joint_WRIST 2", "Joint_WRIST 3" };
         Slider[] targets = { null, null, null, null, null, null };
         for (int i = 0; i < jointNames.Length; i++)
         {
@@ -103,7 +112,13 @@ public class SecCoordQueueController : MonoBehaviour
 
         if (velSlider == null)
         {
-            velSlider = body.Find("Vel/S")?.GetComponent<Slider>();
+            // Vel ya no cuelga de este Body: QuestSceneBuilder.ReflowJointsAndCart lo
+            // saca de en medio de los joints para la rejilla de 3 columnas, y
+            // PairQueueWithJog lo reparenta a VelQueueColumn, hermano de JogColumn --
+            // los dos cuelgan de JogRow, tres niveles arriba de este Body
+            // (Body -> SecJoints -> JogColumn -> JogRow).
+            var jogRow = body.parent?.parent?.parent;
+            velSlider = jogRow?.Find("VelQueueColumn/Vel/S")?.GetComponent<Slider>();
             if (velSlider == null)
                 Debug.LogWarning("[SecCoordQueueController] Vel slider not found.");
         }

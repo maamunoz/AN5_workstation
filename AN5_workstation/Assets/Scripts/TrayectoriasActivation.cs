@@ -27,7 +27,11 @@ public class TrayectoriasActivation : MonoBehaviour
     {
         if (_jps == null) return;
 
-        var body = transform.Find("CenterBottom/SecJoints/Body");
+        // QuestSceneBuilder.PairQueueWithJog cuelga SecJoints de una JogColumn dentro
+        // de una JogRow, al lado de la cola de coordenadas -- ya no de CenterBottom
+        // directo. Ver el mismo camino en QuestSceneBuilder.MakeMovable (con
+        // SecCartInput en vez de SecJoints al final).
+        var body = transform.Find("CenterBottom/JogRow/JogColumn/SecJoints/Body");
         if (body == null)
         {
             Debug.LogWarning("[TrayectoriasActivation] SecJoints/Body not found.");

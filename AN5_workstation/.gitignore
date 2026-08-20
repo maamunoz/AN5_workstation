@@ -97,11 +97,23 @@ InitTestScene*.unity*
 # /Assets/AddressableAssetsData/OSX/addressables_content_state.bin
 /[Aa]ssets/AddressableAssetsData/*/*.bin*
 
-# Visual Scripting auto-generated files
-/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db
-/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db.meta
-/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers
-/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers.meta
+# Visual Scripting auto-generated files -- las entradas de abajo cubrían solo
+# UnitOptions.db y Property Providers; un build de Android regenera además
+# AotStubs.cs y link.xml en la misma carpeta, así que se ignora entera.
+/[Aa]ssets/Unity.VisualScripting.Generated/
+/[Aa]ssets/Unity.VisualScripting.Generated.meta
+
+# link.xml de IL2CPP para el merge de packages, generado en cada build.
+/[Aa]ssets/packages-merged-link/
+/[Aa]ssets/packages-merged-link.meta
+
+# Archivos del Performance Test Runner, generados por el propio test runner.
+/[Aa]ssets/Resources/PerformanceTestRunInfo.json*
+/[Aa]ssets/Resources/PerformanceTestRunSettings.json*
+
+# Preferencias/ajustes del XR Simulation, regenerados por el propio paquete.
+/[Aa]ssets/XR/Temp/
+/[Aa]ssets/XR/Temp.meta
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
