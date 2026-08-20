@@ -12,7 +12,7 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 /// se selecciona abre un teclado flotante delante del operador, al alcance del rayo y del
 /// toque directo.
 ///
-/// Se construye por código a propósito, no desde la escena: Quest_test_arnes se
+/// Se construye por código a propósito, no desde la escena: XR_quest se
 /// reconstruye entera desde AN5_sim en cada pasada (ver QuestSceneBuilder), así que
 /// cualquier jerarquía que se dejara montada a mano se perdería. Basta con que el
 /// constructor deje un GameObject con este componente.

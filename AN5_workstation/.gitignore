@@ -117,3 +117,6 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Salida del arnés de mediciones, generada por cada corrida en la rama de evaluación.
+/measurements/

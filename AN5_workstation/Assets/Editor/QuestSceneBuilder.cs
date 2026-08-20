@@ -12,7 +12,7 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace AN5.EditorTools
 {
-    /// Reconstruye Assets/Scenes/Quest_test_arnes.unity a partir de AN5_sim.unity.
+    /// Reconstruye Assets/Scenes/XR_quest.unity a partir de AN5_sim.unity.
     ///
     /// La escena Quest es una copia literal del entorno de AN5_sim (robot fr5v6,
     /// laboratorio, conexión ROS2, arnés de mediciones P1-P10 y toda la UI) con las
@@ -22,12 +22,12 @@ namespace AN5.EditorTools
     /// Está escrito como reconstrucción y no como edición incremental a propósito:
     /// AN5_sim sigue siendo la única fuente de verdad del entorno, así que cuando
     /// cambie basta con volver a correr esto (menú AN5) y la escena Quest se
-    /// regenera. Cualquier retoque hecho a mano sobre Quest_test_arnes se pierde al
+    /// regenera. Cualquier retoque hecho a mano sobre XR_quest se pierde al
     /// reconstruir; si un ajuste debe sobrevivir, va aquí.
     public static class QuestSceneBuilder
     {
         const string k_SourceScene = "Assets/Scenes/AN5_sim.unity";
-        const string k_TargetScene = "Assets/Scenes/Quest_test_arnes.unity";
+        const string k_TargetScene = "Assets/Scenes/XR_quest.unity";
 
         const string k_RigPrefab =
             "Assets/Samples/XR Interaction Toolkit/3.4.1/Starter Assets/Prefabs/XR Origin (XR Rig).prefab";
@@ -270,7 +270,7 @@ namespace AN5.EditorTools
         const float k_WallCenterY = 2.30f;     // m, altura del centro de las pantallas
         const float k_WallClearance = 0.01f;   // m por delante del muro, para no rifar el z-buffer
 
-        [MenuItem("AN5/Reconstruir Quest_test_arnes desde AN5_sim")]
+        [MenuItem("AN5/Reconstruir XR_quest desde AN5_sim")]
         public static void Build()
         {
             BuildInternal();

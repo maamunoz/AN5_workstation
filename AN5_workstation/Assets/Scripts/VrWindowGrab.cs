@@ -5,7 +5,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 /// Deja mover una ventana World Space con los mandos del visor.
 ///
-/// El sitio de cada ventana de Quest_test_arnes lo fija el constructor de la escena
+/// El sitio de cada ventana de XR_quest lo fija el constructor de la escena
 /// (QuestSceneBuilder) y es el mismo para todo el mundo. Para lo que solo se mira eso
 /// vale, pero SecTraj —cargar el .csv, ejecutar, pausar, parar— se maneja con las manos,
 /// y ahí la altura y la distancia buenas dependen de quién lleve el visor y de si está

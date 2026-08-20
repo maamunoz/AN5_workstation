@@ -1,4 +1,4 @@
-# Escena `Quest_test_arnes`
+# Escena `XR_quest`
 
 Es el entorno de `AN5_sim` (robot fr5v6, laboratorio, conexión ROS2, toda la UI y el
 arnés de mediciones P1–P10) llevado a un visor Meta Quest 2, con locomoción y con la
@@ -14,7 +14,7 @@ simulación XR del editor activa para poder validarlo antes de subirlo a las gaf
 
 La escena **no se edita a mano**: se reconstruye desde `AN5_sim` con
 
-> **AN5 ▸ Reconstruir Quest_test_arnes desde AN5_sim**
+> **AN5 ▸ Reconstruir XR_quest desde AN5_sim**
 
 (`Assets/Editor/QuestSceneBuilder.cs`), o en batch:
 
@@ -25,13 +25,13 @@ Unity -batchmode -nographics -quit \
 ```
 
 `AN5_sim` sigue siendo la única fuente de verdad del entorno: cuando cambie, se vuelve
-a correr el constructor y `Quest_test_arnes` queda al día. Lo que se retoque a mano
+a correr el constructor y `XR_quest` queda al día. Lo que se retoque a mano
 sobre la escena Quest se pierde en la siguiente reconstrucción — si un ajuste debe
 sobrevivir, va en el constructor.
 
 ## Qué cambia respecto de `AN5_sim`
 
-| | `AN5_sim` (escritorio) | `Quest_test_arnes` (visor) |
+| | `AN5_sim` (escritorio) | `XR_quest` (visor) |
 |---|---|---|
 | Punto de vista | `mainCamera` + `Camera_aux1/2`, orbitables con el DPad | `XR Origin (XR Rig)` en (0, 0, −2), mirando al robot; las tres cámaras de escritorio quedan desactivadas |
 | Desplazamiento | teclado/ratón sobre la cámara | locomoción **continua**: stick izquierdo mueve, derecho gira. Sin teleport |
@@ -446,7 +446,7 @@ cual, en Screen Space: si alguna vez se reactiva, hay que pasarlo a World Space 
 
 ## Validar en el editor
 
-1. Abrir `Assets/Scenes/Quest_test_arnes.unity` y darle a Play. No hace falta visor:
+1. Abrir `Assets/Scenes/XR_quest.unity` y darle a Play. No hace falta visor:
    el `XR Interaction Simulator` inyecta un HMD y dos mandos simulados.
 2. Controles del simulador (los recuerda su UI en pantalla):
    - ratón: mirar; `W`/`A`/`S`/`D`: desplazar.
