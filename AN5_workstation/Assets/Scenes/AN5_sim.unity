@@ -4395,7 +4395,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 
+  m_Text: trayectoria_prueba.csv
 --- !u!222 &89031244
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -35659,7 +35659,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 
+  m_Text: 9090
 --- !u!222 &792819500
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -42942,7 +42942,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 819b77f1c22c9044fb11a9b6529b5b9a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AN5.Measurement.MeasurementSession
-  configuration: 2
+  configuration: 1
   platformLabel: Windows-PC
   runNotes: 
   networkLinkType: 
@@ -56531,7 +56531,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 
+  m_Text: 192.168.1.10
 --- !u!222 &1250180075
 CanvasRenderer:
   m_ObjectHideFlags: 0
