@@ -10,7 +10,7 @@ public class DPadCameraTranslator : MonoBehaviour
     public float mouseSensitivity = 0.01f;
 
     [Header("Touch (iPad) - arrastrar con dos dedos")]
-    public float touchPanSensitivity = 0.01f;
+    public float touchPanSensitivity = 0.004f;
 
     DPadButton _btnUp, _btnDown, _btnLeft, _btnRight;
     bool _wasAnyPressed;
