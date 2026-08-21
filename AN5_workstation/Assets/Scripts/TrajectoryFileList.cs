@@ -50,35 +50,121 @@ public class TrajectoryFileList : MonoBehaviour
 
     RectTransform _rows;
     Text          _titleText;
-    string        _directory;
+    string[]      _directories;
     Action<string> _onChosen;
+    RectTransform _anchor;
+
+    // La lista ya no cuelga de la ventana que la abre sino del canvas (ver Create()), así
+    // que no se la puede volver a encontrar con GetComponentInChildren(anchor). Este
+    // registro mantiene la relación ventana -> lista que esa búsqueda daba gratis.
+    static readonly Dictionary<RectTransform, TrajectoryFileList> s_ByAnchor =
+        new Dictionary<RectTransform, TrajectoryFileList>();
+
+    static TrajectoryFileList Find(RectTransform anchor)
+    {
+        if (anchor == null) return null;
+        if (!s_ByAnchor.TryGetValue(anchor, out var picker)) return null;
+        // Comparación contra null de UnityEngine.Object: atrapa la lista ya destruida
+        // (recarga de escena) y limpia la entrada muerta.
+        if (picker == null) { s_ByAnchor.Remove(anchor); return null; }
+        return picker;
+    }
+
+    void Update()
+    {
+        // Al colgar del canvas y no de la ventana, apagar su pestaña ya no la apaga sola:
+        // sin esto quedaba flotando sobre el tab siguiente. Si la ventana que la abrió
+        // dejó de estar visible, esta lista se esconde con ella.
+        if (_anchor == null || !_anchor.gameObject.activeInHierarchy)
+            gameObject.SetActive(false);
+    }
 
     /// Muestra (creándola si hace falta) la lista colgando a la derecha de `anchor` y la
-    /// refresca contra `directory`. `anchor` tiene que ser un RectTransform que ya cuelgue
+    /// refresca contra `directories`. `anchor` tiene que ser un RectTransform que ya cuelgue
     /// de un Canvas World Space con TrackedDeviceGraphicRaycaster -- la ventana de SecTraj
     /// ya lo es, ver QuestSceneBuilder.DetachAsWindow.
-    public static TrajectoryFileList Show(RectTransform anchor, string directory, Action<string> onChosen)
+    ///
+    /// Recibe VARIOS directorios (y no uno) por el iPad: Finder deja soltar archivos en la
+    /// raíz de la carpeta Documents de la app, pero soltarlos DENTRO de una subcarpeta no
+    /// funciona de forma fiable, así que los .txt terminan al lado de "routines/" en vez de
+    /// dentro. Escanear ambos evita tener que explicarle esa distinción a quien copia los
+    /// archivos. Ver SecTrajController.GetRoutinesSearchDirs().
+    public static TrajectoryFileList Show(RectTransform anchor, string[] directories, Action<string> onChosen)
     {
-        var picker = anchor.GetComponentInChildren<TrajectoryFileList>(true);
-        if (picker == null) picker = Create(anchor);
+        var picker = Find(anchor);
+        if (picker == null)
+        {
+            picker = Create(anchor);
+            s_ByAnchor[anchor] = picker;
+        }
 
-        picker._directory = directory;
-        picker._onChosen  = onChosen;
+        picker._anchor      = anchor;
+        picker._directories = directories ?? new string[0];
+        picker._onChosen    = onChosen;
         picker.gameObject.SetActive(true);
+        picker.transform.SetAsLastSibling(); // por encima del resto del canvas
         picker.Refresh();
+        // Después de Refresh a propósito: hasta que el ContentSizeFitter no corre sobre
+        // las filas recién creadas, el alto todavía no es el definitivo y el recorte
+        // contra el borde inferior del canvas daría mal.
+        picker.PlaceNextTo();
         return picker;
     }
 
     public static void Hide(RectTransform anchor)
     {
-        var picker = anchor.GetComponentInChildren<TrajectoryFileList>(true);
+        var picker = Find(anchor);
         if (picker != null) picker.gameObject.SetActive(false);
     }
 
     public static bool IsVisible(RectTransform anchor)
     {
-        var picker = anchor.GetComponentInChildren<TrajectoryFileList>(true);
+        var picker = Find(anchor);
         return picker != null && picker.gameObject.activeSelf;
+    }
+
+    /// Ubica la lista al lado de la ventana que la abrió, en píxeles del canvas: a la
+    /// derecha si entra, si no a la izquierda, y después recortada para no salirse por
+    /// ningún borde.
+    ///
+    /// El "si no, a la izquierda" no es hipotético: en iPad_HUD las tres ventanas viven
+    /// dentro de RightPanel, pegadas al borde derecho de la pantalla, y ahí quedan 5 px
+    /// libres de los 504 que la lista necesita. Hacia la izquierda sobra pantalla.
+    void PlaceNextTo()
+    {
+        if (_anchor == null) return;
+        var parent = transform.parent as RectTransform;
+        if (parent == null) return;
+
+        Rect canvasRect = parent.rect;
+        Rect a          = RectInParent(_anchor, parent);
+        Vector2 size    = ((RectTransform)transform).rect.size;
+
+        const float gap = 24f;
+
+        float x = a.xMax + gap;
+        if (x + size.x > canvasRect.xMax)
+            x = a.xMin - gap - size.x;
+        x = Mathf.Clamp(x, canvasRect.xMin, Mathf.Max(canvasRect.xMin, canvasRect.xMax - size.x));
+
+        float top = Mathf.Min(a.yMax, canvasRect.yMax);
+        if (top - size.y < canvasRect.yMin)
+            top = Mathf.Min(canvasRect.yMax, canvasRect.yMin + size.y);
+
+        // pivot y anclas están en la esquina superior izquierda del canvas (ver Create()),
+        // así que anchoredPosition es el desplazamiento desde esa esquina.
+        ((RectTransform)transform).anchoredPosition =
+            new Vector2(x - canvasRect.xMin, top - canvasRect.yMax);
+    }
+
+    /// Rect de `rt` expresado en el espacio local de `parent`.
+    static Rect RectInParent(RectTransform rt, RectTransform parent)
+    {
+        var corners = new Vector3[4];
+        rt.GetWorldCorners(corners);
+        Vector3 bl = parent.InverseTransformPoint(corners[0]);
+        Vector3 tr = parent.InverseTransformPoint(corners[2]);
+        return Rect.MinMaxRect(bl.x, bl.y, tr.x, tr.y);
     }
 
     void Refresh()
@@ -88,29 +174,41 @@ public class TrajectoryFileList : MonoBehaviour
 
         var font = VrUiKit.DefaultFont();
 
-        List<string> files;
-        try
+        // Un directorio que no exista (o al que no se pueda entrar) no puede tumbar la
+        // lista entera: se avisa y se sigue con los demás. En iOS la carpeta "routines"
+        // puede perfectamente no haberse creado nunca y aun así haber archivos sueltos
+        // en la raíz de Documents, que es el caso normal cuando se copian con Finder.
+        var files = new List<string>();
+        foreach (string dir in _directories)
         {
-            files = k_Extensions
-                .SelectMany(pattern => Directory.GetFiles(_directory, pattern))
-                .Distinct()
-                .OrderByDescending(File.GetLastWriteTimeUtc) // lo recién copiado por adb push arriba de todo
-                .ToList();
+            if (string.IsNullOrEmpty(dir)) continue;
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+                foreach (string pattern in k_Extensions)
+                    files.AddRange(Directory.GetFiles(dir, pattern));
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[TrajectoryFileList] No se pudo leer '{dir}': {e.Message}");
+            }
         }
-        catch (Exception e)
-        {
-            files = new List<string>();
-            Debug.LogWarning($"[TrajectoryFileList] No se pudo leer '{_directory}': {e.Message}");
-        }
+
+        files = files
+            .Distinct()
+            .OrderByDescending(File.GetLastWriteTimeUtc) // lo recién copiado arriba de todo
+            .ToList();
 
         _titleText.text = $"Archivos ({files.Count})";
 
         if (files.Count == 0)
         {
             var empty = VrUiKit.MakeRow(_rows, "Empty");
-            VrUiKit.MakeText(empty, $"No hay archivos en\n{_directory}", font, k_RowFontSize, TextAnchor.MiddleLeft);
+            VrUiKit.MakeText(empty, "No hay archivos en\n" + string.Join("\n", _directories), font, k_RowFontSize, TextAnchor.MiddleLeft);
             var empties = empty.GetComponent<LayoutElement>();
-            empties.preferredHeight = k_RowHeight * 1.5f;
+            // Una línea para el rótulo más una por cada ruta listada; con un solo
+            // directorio da el mismo 1.5 de siempre.
+            empties.preferredHeight = k_RowHeight * (1f + 0.5f * Mathf.Max(1, _directories.Length));
         }
         else
         {
@@ -153,12 +251,36 @@ public class TrajectoryFileList : MonoBehaviour
 
         var rootGo = new GameObject("TrajectoryFileList", typeof(RectTransform));
         var root = (RectTransform)rootGo.transform;
-        root.SetParent(anchor, worldPositionStays: false);
+
+        // Cuelga del CANVAS, no de la ventana que la abre. Colgar de la ventana tenía dos
+        // problemas, los dos comprobados midiendo la escena iPad_HUD:
+        //
+        //  1) La ventana de SecTraj tiene un VerticalLayoutGroup, y un LayoutGroup
+        //     controla la posición Y el tamaño de todos sus hijos: descartaba el anclaje
+        //     de acá y apilaba la lista como una fila más, con el ancho de la ventana
+        //     (244) en vez de k_PanelWidth y pegada debajo del contenido.
+        //  2) Aun así apareciendo, en el tab de monitoreo quedaba tapada por SecTrend,
+        //     que es HERMANO de la ventana: uGUI dibuja en orden de jerarquía, así que
+        //     nada que cuelgue de la ventana puede quedar por encima de un hermano
+        //     posterior de ella, sin importar el orden interno.
+        //
+        // Colgando del canvas y poniéndose como último hijo (ver Show) se dibuja sobre
+        // todo lo demás, y PlaceNextTo() la ubica al lado de la ventana.
+        var canvas = anchor.GetComponentInParent<Canvas>();
+        root.SetParent(canvas != null ? (RectTransform)canvas.transform : anchor,
+                       worldPositionStays: false);
+
+        // Anclada a la esquina superior izquierda del canvas: así anchoredPosition es una
+        // posición absoluta en píxeles de canvas y PlaceNextTo() la calcula sin pelear
+        // con anclas relativas.
         root.pivot     = new Vector2(0f, 1f);
-        root.anchorMin = new Vector2(1f, 1f);
-        root.anchorMax = new Vector2(1f, 1f);
-        root.anchoredPosition = new Vector2(24f, 0f);
+        root.anchorMin = new Vector2(0f, 1f);
+        root.anchorMax = new Vector2(0f, 1f);
         root.sizeDelta = new Vector2(k_PanelWidth, 0f);
+
+        // Por si el canvas tuviera a su vez un LayoutGroup, que volvería a pisar la
+        // posición como hacía el de la ventana.
+        rootGo.AddComponent<LayoutElement>().ignoreLayout = true;
 
         var bg = rootGo.AddComponent<Image>();
         bg.color = new Color(0.05f, 0.05f, 0.07f, 0.96f);

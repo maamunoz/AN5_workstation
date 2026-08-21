@@ -185,15 +185,13 @@ public class SecTrajController : MonoBehaviour
             if (cargarButton != null)
                 cargarButton.onClick.AddListener(() =>
                 {
-                    // No hay diálogo nativo de archivos en Android/Quest (ni tendría cómo
-                    // pintarse dentro de la sesión inmersiva de OpenXR aunque lo hubiera) --
-                    // ver el comentario de ShowNativeFileDialog. Ahí se usa en cambio
-                    // TrajectoryFileList, que cuelga al lado de esta misma ventana y se lee
-                    // con el rayo de los mandos.
-                    if (Application.platform == RuntimePlatform.Android)
+                    // Ni Android/Quest ni iOS/iPad tienen un diálogo nativo de archivos
+                    // usable desde acá, así que ambos abren TrajectoryFileList colgada al
+                    // lado de esta misma ventana -- ver UsesInAppFileList.
+                    if (UsesInAppFileList)
                     {
-                        Debug.Log("[SecTrajController] Btn_CARGAR clicked (Android) — toggling file list");
-                        ToggleAndroidFileList();
+                        Debug.Log($"[SecTrajController] Btn_CARGAR clicked ({Application.platform}) — toggling file list");
+                        ToggleInAppFileList();
                     }
                     else
                     {
@@ -221,6 +219,20 @@ public class SecTrajController : MonoBehaviour
 
     private bool _listenersWired;
 
+    /// Plataformas móviles donde el botón CARGAR abre TrajectoryFileList (una lista
+    /// dibujada dentro de la propia app) en vez del diálogo nativo del sistema.
+    ///
+    /// Android/Quest: no hay diálogo nativo, y aunque lo hubiera no se pintaría dentro
+    /// de la sesión inmersiva de OpenXR.
+    ///
+    /// iOS/iPad: ShowNativeFileDialog no sirve porque su implementación lanza un proceso
+    /// externo (PowerShell / zenity / osascript) y el sandbox de iOS no permite
+    /// System.Diagnostics.Process. Antes iOS caía en la rama de escritorio, así que
+    /// tocar CARGAR en cualquiera de los paneles no abría absolutamente nada.
+    private static bool UsesInAppFileList =>
+        Application.platform == RuntimePlatform.Android ||
+        Application.platform == RuntimePlatform.IPhonePlayer;
+
     // Dónde viven los archivos de trayectorias. En escritorio, la carpeta "routines" al
     // lado del ejecutable (para que sea fácil de encontrar y copiar cosas a mano). En
     // Android no hay un "al lado del .apk" utilizable: persistentDataPath es la única
@@ -228,9 +240,16 @@ public class SecTrajController : MonoBehaviour
     // versión de Android, y sigue siendo alcanzable desde una PC por USB/adb sin rootear
     // el visor -- ver el aviso que registra LoadByTypedFileName cuando no encuentra nada
     // ahí, que imprime esta misma ruta resuelta.
+    //
+    // En iOS pasa lo mismo pero peor: Application.dataPath apunta DENTRO del bundle de
+    // la app, que es de solo lectura, así que la rama de escritorio ni siquiera podría
+    // crear la carpeta. persistentDataPath es .../Documents, que además es la carpeta
+    // que queda visible en Finder/app Archivos gracias a UIFileSharingEnabled (ver
+    // Assets/Editor/IosFileSharingPostProcess.cs) -- ese es el equivalente iOS del
+    // `adb push` que se usa en la Quest.
     private static string GetRoutinesDir()
     {
-        string dir = Application.platform == RuntimePlatform.Android
+        string dir = UsesInAppFileList
             ? Path.Combine(Application.persistentDataPath, "routines")
             : Path.GetFullPath(Path.Combine(Application.dataPath, "..", "routines"));
 
@@ -238,15 +257,39 @@ public class SecTrajController : MonoBehaviour
         return dir;
     }
 
-    /// Sustituto de OpenFileDialog para Android: sin diálogo nativo de archivos (no hay
-    /// uno, y aunque lo hubiera no se pintaría dentro de la sesión inmersiva de OpenXR),
-    /// esto abre/cierra TrajectoryFileList colgada al lado de esta ventana, con un botón
-    /// por archivo encontrado en GetRoutinesDir() -- tocable con el rayo de los mandos.
-    /// Los archivos llegan ahí copiándolos por USB con
-    /// `adb push archivo.txt "<GetRoutinesDir()>"` mientras la app está corriendo; la
-    /// lista se relee del disco cada vez que se abre o se toca su botón "Refrescar", así
-    /// que no hace falta reinstalar nada para verlos.
-    private void ToggleAndroidFileList()
+    /// Directorios donde BUSCAR trayectorias, en orden de preferencia. Normalmente es solo
+    /// GetRoutinesDir(), pero en iOS se agrega la raíz de Documents.
+    ///
+    /// POR QUÉ: con UIFileSharingEnabled, Finder deja soltar archivos en la carpeta
+    /// Documents de la app, pero soltarlos DENTRO de la subcarpeta "routines" no funciona
+    /// de forma fiable -- terminan en la raíz, al lado de la carpeta en vez de dentro. Ese
+    /// es el camino que de hecho toma cualquiera que copie los archivos con el cable, así
+    /// que buscar en los dos lados evita convertir un detalle de Finder en un "no me
+    /// aparece ningún archivo". GetRoutinesDir() sigue siendo el directorio canónico y el
+    /// único donde se escribe.
+    private static string[] GetRoutinesSearchDirs()
+    {
+        string routines = GetRoutinesDir();
+
+        return Application.platform == RuntimePlatform.IPhonePlayer
+            ? new[] { routines, Application.persistentDataPath }
+            : new[] { routines };
+    }
+
+    /// Sustituto de OpenFileDialog en las plataformas de UsesInAppFileList: abre/cierra
+    /// TrajectoryFileList colgada al lado de esta ventana, con un botón por archivo
+    /// encontrado en GetRoutinesDir() -- tocable con el rayo de los mandos en la Quest y
+    /// con el dedo en el iPad.
+    ///
+    /// Cómo llegan los archivos ahí:
+    ///   Quest: `adb push archivo.txt "<GetRoutinesDir()>"` por USB con la app corriendo.
+    ///   iPad:  arrastrándolos a la carpeta Documents de la app desde Finder (o desde la
+    ///          app Archivos), que es visible gracias a UIFileSharingEnabled. Sirve
+    ///          soltarlos sueltos en la raíz, sin meterlos en "routines" -- ver
+    ///          GetRoutinesSearchDirs().
+    /// La lista se relee del disco cada vez que se abre o se toca su botón "Refrescar",
+    /// así que no hace falta reinstalar nada para verlos.
+    private void ToggleInAppFileList()
     {
         var windowRoot = (RectTransform)transform;
         if (TrajectoryFileList.IsVisible(windowRoot))
@@ -255,7 +298,7 @@ public class SecTrajController : MonoBehaviour
             return;
         }
 
-        TrajectoryFileList.Show(windowRoot, GetRoutinesDir(), chosen =>
+        TrajectoryFileList.Show(windowRoot, GetRoutinesSearchDirs(), chosen =>
         {
             Debug.Log($"[SecTrajController] Archivo elegido de la lista: {chosen}");
             StartCoroutine(LoadTrajectoryFile(chosen));
