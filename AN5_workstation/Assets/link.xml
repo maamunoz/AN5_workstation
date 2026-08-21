@@ -1,0 +1,44 @@
+<!--
+  Evita que el "managed stripping" de IL2CPP borre los tipos de mensaje de ROS.
+
+  POR QUÉ: RosSharp resuelve el nombre del tópico ROS por REFLEXIÓN, en
+  RosSharp.RosBridgeClient.Communicator.GetRosName<T>(), leyendo el campo
+  "RosMessageName" del tipo de mensaje:
+
+      typeof(T).GetField("RosMessageName", ...).GetValue(null)
+
+  Ese campo es un const (literal) cuyo único uso en todo el código es esa
+  búsqueda por reflexión. El analizador del linker no ve ninguna referencia
+  directa, así que con stripping activo lo elimina del build; entonces
+  GetField(...) devuelve null y .GetValue(null) tira NullReferenceException
+  DENTRO de RosSocket.Subscribe<T>(), por lo que NINGUNA suscripción llega a
+  registrarse: la app conecta al rosbridge pero no recibe un solo mensaje y el
+  robot nunca actualiza la posición.
+
+  Solo pasa en el dispositivo (iPad/IL2CPP). En el Editor corre Mono sin
+  stripping, el campo está siempre presente y por eso no se reproduce ahí.
+  ProjectSettings tiene managedStrippingLevel iPhone: 1 (Low), que ya alcanza
+  para que ocurra.
+
+  Traza real del iPad que lo confirma:
+    at RosSharp.RosBridgeClient.Communicator.GetRosName[T] ()
+    at RosSharp.RosBridgeClient.Subscriber`1[T]..ctor (...)
+    at RosSharp.RosBridgeClient.RosSocket.Subscribe[T] (...)
+
+  RosBridgeClient se preserva entero (es el DLL de RosSharp, con los 346 tipos
+  de mensaje). De Assembly-CSharp se preserva SOLO FRState (que es un tipo de
+  mensaje definido como script del proyecto, no dentro del DLL), para no
+  desactivar el stripping de todo el juego.
+
+  NOTA: en este archivo no se puede usar "- -" pegado como guion largo, aunque
+  sea el estilo del resto del código: un comentario XML no admite esa secuencia
+  y el UnityLinker aborta el build entero con
+  "Fatal error in Unity CIL Linker / System.Xml.XmlException".
+-->
+<linker>
+  <assembly fullname="RosBridgeClient" preserve="all" />
+
+  <assembly fullname="Assembly-CSharp">
+    <type fullname="RosSharp.RosBridgeClient.MessageTypes.Frhal.FRState" preserve="all" />
+  </assembly>
+</linker>

@@ -41,7 +41,35 @@ namespace RosSharp.RosBridgeClient
        
         public Button reconnectButton;
 
-        public RosSocket RosSocket { get; private set; }
+        // FIX: publicación segura entre hilos. Esta referencia se ESCRIBE desde hilos
+        // de fondo (ConnectAndWait/ConnectOnce hacen "RosSocket = ConnectToRos(...)")
+        // y se LEE desde el hilo principal (los WatchForReconnect de los subscribers,
+        // Ros2CommandSender) y desde el hilo de UnitySubscriber<T>.Subscribe(). Como
+        // auto-property normal no había ninguna barrera de memoria en medio, y C# --a
+        // diferencia de los campos final de Java-- NO garantiza que un objeto se
+        // publique completamente construido: el procesador puede hacer visible la
+        // escritura de la REFERENCIA antes que las escrituras de los campos internos
+        // del RosSocket (protocol, Serializer, los diccionarios de Subscribers). En
+        // x86 eso casi no se nota porque su modelo de memoria es fuerte y no reordena
+        // stores, pero el iPad es ARM, con modelo débil, y ahí sí puede pasar que el
+        // lector vea RosSocket != null y un campo interno todavía en null. volatile da
+        // semántica release en la escritura y acquire en la lectura: quien lea la
+        // referencia nueva ve sí o sí todo lo que se escribió antes de publicarla.
+        //
+        // OJO, para que no se lea de más: esto es un endurecimiento preventivo, NO la
+        // causa del "Fallo al re-suscribirse: Object reference not set to an instance
+        // of an object" que se vio en el log del iPad. Ese resultó ser otra cosa: el
+        // managed stripping de IL2CPP borraba el const RosMessageName, que RosSharp
+        // busca por reflexión en Communicator.GetRosName<T>() -- ver Assets/link.xml.
+        // Se deja igual porque la publicación insegura era un problema real y latente
+        // aparte, aunque no fuera el que se estaba persiguiendo.
+        private volatile RosSocket _rosSocket;
+        public RosSocket RosSocket
+        {
+            get { return _rosSocket; }
+            private set { _rosSocket = value; }
+        }
+
         public ManualResetEvent IsConnected { get; private set; }
 
         public bool IsOnline
