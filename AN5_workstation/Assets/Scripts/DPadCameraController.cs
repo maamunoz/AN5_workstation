@@ -15,13 +15,18 @@ public class DPadCameraController : MonoBehaviour
     public float minPitch = -80f;
     public float maxPitch = 80f;
 
-    [Header("Touch (iPad) - pellizcar para zoom")]
-    public float pinchZoomSensitivity = 0.01f;
+    [Header("Touch (iPad) - un dedo para orbitar, pellizcar para zoom")]
+    public float touchOrbitSensitivity = 0.15f;
+    public float pinchZoomSensitivity = 0.004f;
 
     DPadButton _btnUp, _btnDown, _btnLeft, _btnRight;
     Slider _zoomSlider;
     float _yaw, _pitch, _radius;
     bool _wasAnyPressed;
+
+    // Estado del arrastre de un dedo entre cuadros -- ver TouchGestureUtil.
+    Vector2 _prevOrbitTouch;
+    bool _hadOrbitTouch;
 
     // Estado del pellizco entre cuadros -- ver TouchGestureUtil.
     Vector2 _prevPinch0, _prevPinch1;
@@ -132,7 +137,26 @@ public class DPadCameraController : MonoBehaviour
         bool kRight = !isTyping && keyboard != null && keyboard.dKey.isPressed;
         bool mouse  = mouseDevice != null && mouseDevice.leftButton.isPressed && !EventSystem.current.IsPointerOverGameObject();
 
-        bool anyPressed = kUp || kDown || kLeft || kRight || mouse
+        // Arrastre de un dedo (iPad): mismo giro que ya hace el arrastre con el
+        // botón izquierdo del mouse, pero a partir del delta de posición del dedo
+        // entre cuadros en vez del delta del mouse. TryGetOneFingerGesture exige
+        // touchCount == 1, así que nunca compite con el pellizco/pan de dos dedos
+        // de más abajo.
+        bool touchOrbit = TouchGestureUtil.TryGetOneFingerGesture(out var orbitTouch);
+        Vector2 orbitTouchDelta = Vector2.zero;
+        if (touchOrbit)
+        {
+            if (_hadOrbitTouch)
+                orbitTouchDelta = orbitTouch - _prevOrbitTouch;
+            _prevOrbitTouch = orbitTouch;
+            _hadOrbitTouch = true;
+        }
+        else
+        {
+            _hadOrbitTouch = false;
+        }
+
+        bool anyPressed = kUp || kDown || kLeft || kRight || mouse || touchOrbit
                        || (_btnUp    != null && _btnUp.isPressed)
                        || (_btnDown  != null && _btnDown.isPressed)
                        || (_btnLeft  != null && _btnLeft.isPressed)
@@ -194,6 +218,12 @@ public class DPadCameraController : MonoBehaviour
             var delta = mouseDevice.delta.ReadValue();
             _pitch -= delta.y * mouseSensitivity;
             _yaw   += delta.x * mouseSensitivity;
+        }
+
+        if (touchOrbit && orbitTouchDelta != Vector2.zero)
+        {
+            _pitch -= orbitTouchDelta.y * touchOrbitSensitivity;
+            _yaw   += orbitTouchDelta.x * touchOrbitSensitivity;
         }
 
         ApplyOrbit();
