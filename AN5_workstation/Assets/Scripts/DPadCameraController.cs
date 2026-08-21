@@ -15,10 +15,17 @@ public class DPadCameraController : MonoBehaviour
     public float minPitch = -80f;
     public float maxPitch = 80f;
 
+    [Header("Touch (iPad) - pellizcar para zoom")]
+    public float pinchZoomSensitivity = 0.01f;
+
     DPadButton _btnUp, _btnDown, _btnLeft, _btnRight;
     Slider _zoomSlider;
     float _yaw, _pitch, _radius;
     bool _wasAnyPressed;
+
+    // Estado del pellizco entre cuadros -- ver TouchGestureUtil.
+    Vector2 _prevPinch0, _prevPinch1;
+    bool _hadPinch;
 
     void Start()
     {
@@ -134,10 +141,33 @@ public class DPadCameraController : MonoBehaviour
         if (anyPressed && !_wasAnyPressed)
             SyncOrbit();
 
+        // Pellizco de dos dedos (iPad): se convierte en un "scroll" equivalente y se
+        // suma al de la rueda, así reutiliza tal cual el clamp/SyncOrbit/anyPressed
+        // de abajo en vez de duplicar esa lógica.
+        float pinchScroll = 0f;
+        if (TouchGestureUtil.TryGetTwoFingerGesture(out var pinch0, out var pinch1))
+        {
+            if (_hadPinch)
+            {
+                float prevDist = Vector2.Distance(_prevPinch0, _prevPinch1);
+                float currDist = Vector2.Distance(pinch0, pinch1);
+                // Separar los dedos (currDist > prevDist) acerca la cámara (zoom in),
+                // igual que "wheel up" ya hace más abajo.
+                pinchScroll = (currDist - prevDist) * pinchZoomSensitivity;
+            }
+            _prevPinch0 = pinch0;
+            _prevPinch1 = pinch1;
+            _hadPinch = true;
+        }
+        else
+        {
+            _hadPinch = false;
+        }
+
         // Mouse.current.scroll viene en "notches * 120" (delta crudo de rueda en
         // Windows), no en la escala ~0.1/notch de la vieja Input.GetAxis; se divide
         // para que scrollSensitivity siga sintiéndose igual que antes.
-        float scroll = mouseDevice != null ? mouseDevice.scroll.ReadValue().y / 1200f : 0f;
+        float scroll = (mouseDevice != null ? mouseDevice.scroll.ReadValue().y / 1200f : 0f) + pinchScroll;
         if (scroll != 0f)
         {
             if (!anyPressed) SyncOrbit();

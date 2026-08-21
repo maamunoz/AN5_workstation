@@ -9,8 +9,15 @@ public class DPadCameraTranslator : MonoBehaviour
     public float panSpeed = 2f;
     public float mouseSensitivity = 0.01f;
 
+    [Header("Touch (iPad) - arrastrar con dos dedos")]
+    public float touchPanSensitivity = 0.01f;
+
     DPadButton _btnUp, _btnDown, _btnLeft, _btnRight;
     bool _wasAnyPressed;
+
+    // Estado del arrastre de dos dedos entre cuadros -- ver TouchGestureUtil.
+    Vector2 _prevPanMid;
+    bool _hadTouchPan;
 
     void Start()
     {
@@ -62,7 +69,25 @@ public class DPadCameraTranslator : MonoBehaviour
         bool kRight = !isTyping && keyboard != null && keyboard.rightArrowKey.isPressed;
         bool mouse  = mouseDevice != null && mouseDevice.rightButton.isPressed && !EventSystem.current.IsPointerOverGameObject();
 
-        bool anyPressed = kUp || kDown || kLeft || kRight || mouse
+        // Dos dedos arrastrando (iPad): mismo desplazamiento que ya hace el arrastre
+        // con el botón derecho del mouse, pero a partir del punto medio entre los dos
+        // dedos en vez del delta del mouse.
+        bool touchPan = TouchGestureUtil.TryGetTwoFingerGesture(out var pan0, out var pan1);
+        Vector2 touchDelta = Vector2.zero;
+        if (touchPan)
+        {
+            Vector2 mid = (pan0 + pan1) * 0.5f;
+            if (_hadTouchPan)
+                touchDelta = mid - _prevPanMid;
+            _prevPanMid = mid;
+            _hadTouchPan = true;
+        }
+        else
+        {
+            _hadTouchPan = false;
+        }
+
+        bool anyPressed = kUp || kDown || kLeft || kRight || mouse || touchPan
                        || (_btnUp    != null && _btnUp.isPressed)
                        || (_btnDown  != null && _btnDown.isPressed)
                        || (_btnLeft  != null && _btnLeft.isPressed)
@@ -89,6 +114,12 @@ public class DPadCameraTranslator : MonoBehaviour
             var delta = mouseDevice.delta.ReadValue();
             transform.position -= transform.right * (delta.x * mouseSensitivity);
             transform.position -= transform.up    * (delta.y * mouseSensitivity);
+        }
+
+        if (touchPan && touchDelta != Vector2.zero)
+        {
+            transform.position -= transform.right * (touchDelta.x * touchPanSensitivity);
+            transform.position -= transform.up    * (touchDelta.y * touchPanSensitivity);
         }
     }
 }
