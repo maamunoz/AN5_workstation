@@ -131,13 +131,26 @@ public class Ros2CommandSender : MonoBehaviour
                 continue;
             }
 
+            // FIX: mismo patrón que JointPositionSubscriber.WatchForReconnect() (ver
+            // su comentario largo) pero del lado de Advertise/publish en vez de
+            // Subscribe: espera a que la conexión esté confirmada antes de
+            // reanunciar, y un fallo no mata la coroutine para siempre.
             if (currentSocket != lastSeenSocket)
             {
+                if (!rosConnector.IsOnline) continue;
+
                 lastSeenSocket = currentSocket;
                 rosSocket = currentSocket;
-                foreach (var topic in advertisedTopics.Values)
-                    rosSocket.Advertise<StringMsg>(topic);
-                Debug.Log("[Ros2CommandSender] RosSocket reconectado, tópicos re-anunciados: " + string.Join(", ", advertisedTopics.Values));
+                try
+                {
+                    foreach (var topic in advertisedTopics.Values)
+                        rosSocket.Advertise<StringMsg>(topic);
+                    Debug.Log("[Ros2CommandSender] RosSocket reconectado, tópicos re-anunciados: " + string.Join(", ", advertisedTopics.Values));
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning("[Ros2CommandSender] Fallo al reanunciar tópicos tras reconectar: " + ex.Message);
+                }
             }
         }
     }

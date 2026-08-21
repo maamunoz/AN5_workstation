@@ -101,11 +101,39 @@ public class JointPositionSubscriber : UnitySubscriber<RosString>
                 continue;
             }
 
+            // FIX: llamar aquí a Subscribe() apenas cambia la referencia -- sin
+            // confirmar que ESE socket ya terminó de conectar -- es una carrera:
+            // rosConnectorRef.RosSocket se asigna en cuanto arranca el intento de
+            // conexión (ver RosConnector.ConnectAndWait/ConnectOnce), antes de que
+            // el handshake de websocket termine. Antes esta carrera casi siempre
+            // se ganaba por accidente: el ciclo de reconexión viejo dejaba pasar
+            // tiempo de sobra entre que la referencia cambiaba y que Subscribe()
+            // se llamaba de verdad. Al arreglar RosConnector.ReconnectNow() (ver su
+            // comentario de _intentionalCloseCount) las reconexiones pasaron a ser
+            // rápidas y limpias, así que ese colchón accidental desapareció y quedó
+            // expuesto que Subscribe() puede tirar (NullReferenceException visto en
+            // el log del iPad, sin más rastro por IL2CPP) si se llama contra un
+            // socket que todavía no terminó de abrir. Sin el try/catch de abajo,
+            // esa excepción mataba esta coroutine PARA SIEMPRE -- current_joint_position
+            // se quedaba sordo hasta reiniciar la app, sin ningún reintento
+            // posterior, aunque la reconexión hubiera funcionado bien un instante
+            // después. Ahora se espera a que RosConnector confirme la conexión
+            // (IsOnline) antes de suscribirse, y si aun así falla, se reintenta en
+            // la próxima vuelta en vez de morir.
             if (currentSocket != lastSeenSocket)
             {
+                if (!rosConnectorRef.IsOnline) continue;
+
                 lastSeenSocket = currentSocket;
-                currentSocket.Subscribe<RosString>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
-                Debug.Log("[JointPositionSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
+                try
+                {
+                    currentSocket.Subscribe<RosString>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
+                    Debug.Log("[JointPositionSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[JointPositionSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex.Message);
+                }
             }
         }
     }

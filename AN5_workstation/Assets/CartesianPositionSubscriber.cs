@@ -60,11 +60,23 @@ public class CartesianPositionSubscriber : UnitySubscriber<RosString>
                 continue;
             }
 
+            // FIX: espera a que la conexión esté confirmada (IsOnline) antes de
+            // suscribirse, y no deja que un fallo mate la coroutine para siempre --
+            // ver el comentario largo en JointPositionSubscriber.WatchForReconnect().
             if (currentSocket != lastSeenSocket)
             {
+                if (!rosConnectorRef.IsOnline) continue;
+
                 lastSeenSocket = currentSocket;
-                currentSocket.Subscribe<RosString>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
-                Debug.Log("[CartesianPositionSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
+                try
+                {
+                    currentSocket.Subscribe<RosString>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
+                    Debug.Log("[CartesianPositionSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning("[CartesianPositionSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex.Message);
+                }
             }
         }
     }
