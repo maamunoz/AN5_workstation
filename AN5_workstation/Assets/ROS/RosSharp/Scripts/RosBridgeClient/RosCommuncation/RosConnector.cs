@@ -52,6 +52,23 @@ namespace RosSharp.RosBridgeClient
         private bool isReconnecting = false;
         private Thread connectionThread;
 
+        // FIX: ReconnectNow() cierra el RosSocket viejo con RosSocket.Close(), y ese
+        // Close() dispara OnClosed() -- que, sin este flag, no tiene forma de saber que
+        // el cierre fue intencional (pedido por el propio ReconnectNow(), que ya está
+        // arrancando su propio intento de conexión) en vez de una caída real de red.
+        // Sin distinguirlo, OnClosed() arrancaba UN SEGUNDO hilo de auto-reconexión
+        // (ConnectAndWait) por cada click en "Reconnect", que corría en paralelo con el
+        // ConnectOnce() que ReconnectNow() ya había lanzado -- los dos hilos abrían
+        // sockets distintos y competían por escribir la misma propiedad RosSocket. Con 4
+        // clicks seguidos esto medía 8 conexiones reales al servidor en vez de 4, y cuál
+        // de los dos hilos "ganaba" (y por lo tanto qué socket quedaba con la suscripción
+        // viva a current_joint_position) dependía del timing de red -- en loopback local
+        // casi siempre se resolvía solo, pero por WiFi hacia el robot real es la clase de
+        // carrera que deja la posición congelada de forma intermitente sin ningún error
+        // visible. Se cuenta (no un simple bool) porque varios Reconnect intencionales
+        // pueden solaparse antes de que llegue el primer OnClosed().
+        private int _intentionalCloseCount = 0;
+
         // Cancelación cooperativa del hilo de auto-reconexión: Thread.Abort() (más
         // abajo) no existe en IL2CPP -- el backend de scripting obligatorio para
         // Android/Quest -- así que ahí tirar Abort() lanzaba
@@ -156,6 +173,12 @@ namespace RosSharp.RosBridgeClient
             // Thread.Abort(), que no existe en IL2CPP/Quest.
             _connectionGeneration++;
 
+            // Marca este cierre como intencional ANTES de pedirlo, para que OnClosed()
+            // (que puede disparar en este mismo hilo o en uno de red, según el
+            // protocolo) no arranque un segundo hilo de auto-reconexión a competir con
+            // ConnectOnce() más abajo. Ver el comentario de _intentionalCloseCount.
+            Interlocked.Increment(ref _intentionalCloseCount);
+
             // Cerramos el socket anterior si seguía abierto
             if (RosSocket != null)
                 RosSocket.Close();
@@ -191,7 +214,18 @@ namespace RosSharp.RosBridgeClient
             IsConnected.Reset();
             Debug.Log("Disconnected from RosBridge: " + RosBridgeServerUrl);
 
-            // Lógica de auto reconexión (con retardo)
+            // FIX: si este cierre lo pidió ReconnectNow() (o OnApplicationQuit()), quien
+            // lo pidió ya se está encargando de reconectar (o la app se está cerrando) --
+            // arrancar OTRO hilo de auto-reconexión aquí solo compite por RosSocket con
+            // el que ya está en marcha. Ver el comentario de _intentionalCloseCount.
+            if (_intentionalCloseCount > 0)
+            {
+                Interlocked.Decrement(ref _intentionalCloseCount);
+                return;
+            }
+
+            // Lógica de auto reconexión (con retardo) -- solo ante una caída real,
+            // no pedida por el usuario ni por el cierre de la app.
             if (!isReconnecting)
             {
                 isReconnecting = true;
@@ -215,6 +249,7 @@ namespace RosSharp.RosBridgeClient
             // hilo de fondo note la nueva generación y se retire solo -- alcanza con
             // que no siga reconectando ni tocando el socket cerrado.
             _connectionGeneration++;
+            Interlocked.Increment(ref _intentionalCloseCount);
 
             if (RosSocket != null)
                 RosSocket.Close();
