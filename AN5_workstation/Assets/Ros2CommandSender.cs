@@ -135,21 +135,30 @@ public class Ros2CommandSender : MonoBehaviour
             // su comentario largo) pero del lado de Advertise/publish en vez de
             // Subscribe: espera a que la conexión esté confirmada antes de
             // reanunciar, y un fallo no mata la coroutine para siempre.
+            //
+            // FIX2: lastSeenSocket solo se actualiza si Advertise() de verdad tuvo
+            // éxito. Antes se asignaba ANTES del try, incondicionalmente -- así que
+            // si Advertise() lanzaba, el catch evitaba que la coroutine muriera pero
+            // currentSocket ya había
+            // quedado igualado a lastSeenSocket, así que la próxima vuelta del bucle
+            // veía currentSocket == lastSeenSocket y jamás reintentaba: los tópicos
+            // se quedaban sin reanunciar para siempre tras esa reconexión concreta,
+            // en silencio (solo un LogWarning, sin más rastro).
             if (currentSocket != lastSeenSocket)
             {
                 if (!rosConnector.IsOnline) continue;
 
-                lastSeenSocket = currentSocket;
                 rosSocket = currentSocket;
                 try
                 {
                     foreach (var topic in advertisedTopics.Values)
                         rosSocket.Advertise<StringMsg>(topic);
+                    lastSeenSocket = currentSocket;
                     Debug.Log("[Ros2CommandSender] RosSocket reconectado, tópicos re-anunciados: " + string.Join(", ", advertisedTopics.Values));
                 }
                 catch (System.Exception ex)
                 {
-                    Debug.LogWarning("[Ros2CommandSender] Fallo al reanunciar tópicos tras reconectar: " + ex.Message);
+                    Debug.LogWarning("[Ros2CommandSender] Fallo al reanunciar tópicos tras reconectar: " + ex);
                 }
             }
         }

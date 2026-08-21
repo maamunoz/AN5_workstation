@@ -62,6 +62,22 @@ public class JointPositionSubscriber : UnitySubscriber<RosString>
     // Método de inicialización del componente.
     protected override void Start()
     {
+        // FIX: Topic DEBE fijarse antes de base.Start() (igual que ya hacen
+        // CartesianPositionSubscriber/SetpointCartesianPositionSubscriber/
+        // RobotMotionDoneSubscriber, con el mismo comentario). base.Start() lanza
+        // en un hilo aparte UnitySubscriber<T>.Subscribe(), que espera la conexión
+        // con IsConnected.WaitOne() y RECIÉN AHÍ lee este campo Topic. Estando la
+        // asignación después, si la conexión se completaba antes de que el hilo
+        // principal llegara a esta línea, el hilo se suscribía con Topic == null.
+        // Y suscribirse con topic null NO lanza (comprobado: RosSocket.Subscribe
+        // devuelve su id igual), así que no quedaba ni un error en el log: la app
+        // aparecía "conectada a ROS" pero current_joint_position no se suscribía
+        // nunca y el robot no actualizaba la posición jamás. En el iPad salta más
+        // fácil que en el Editor porque RosConnector.Awake() arranca a conectar
+        // antes que cualquier Start(), y contra un rosbridge en red local el
+        // handshake puede terminar dentro del mismo frame.
+        Topic = "current_joint_position";
+
         // Se invoca el método Start de la clase base para inicializar la suscripción.
         base.Start();
 
@@ -71,9 +87,6 @@ public class JointPositionSubscriber : UnitySubscriber<RosString>
         else
             // Si no se han asignado escritores, se asume un arreglo de 6 articulaciones por defecto.
             lastPositions = new float[6];
-
-        // Se define el tópico de ROS al que se suscribirá este componente.
-        Topic = "current_joint_position";
 
         rosConnectorRef = GetComponent<RosConnector>();
         StartCoroutine(WatchForReconnect());
@@ -110,29 +123,43 @@ public class JointPositionSubscriber : UnitySubscriber<RosString>
             // tiempo de sobra entre que la referencia cambiaba y que Subscribe()
             // se llamaba de verdad. Al arreglar RosConnector.ReconnectNow() (ver su
             // comentario de _intentionalCloseCount) las reconexiones pasaron a ser
-            // rápidas y limpias, así que ese colchón accidental desapareció y quedó
-            // expuesto que Subscribe() puede tirar (NullReferenceException visto en
-            // el log del iPad, sin más rastro por IL2CPP) si se llama contra un
-            // socket que todavía no terminó de abrir. Sin el try/catch de abajo,
+            // rápidas y limpias, así que ese colchón accidental desapareció.
+            // OJO: se comprobó en el Editor que suscribirse a un socket que todavía
+            // no terminó de abrir NO lanza (websocket-sharp se traga el Send y
+            // Subscribe() devuelve su id igual), así que esperar IsOnline es una
+            // buena práctica pero NO era lo que causaba la NullReferenceException del
+            // log del iPad. Esa resultó ser el managed stripping de IL2CPP, que
+            // borraba el const RosMessageName que RosSharp busca por reflexión en
+            // Communicator.GetRosName<T>() -- ver Assets/link.xml. Sin el try/catch
+            // de abajo,
             // esa excepción mataba esta coroutine PARA SIEMPRE -- current_joint_position
             // se quedaba sordo hasta reiniciar la app, sin ningún reintento
             // posterior, aunque la reconexión hubiera funcionado bien un instante
             // después. Ahora se espera a que RosConnector confirme la conexión
             // (IsOnline) antes de suscribirse, y si aun así falla, se reintenta en
             // la próxima vuelta en vez de morir.
+            // FIX2: lastSeenSocket solo se actualiza si Subscribe() de verdad tuvo
+            // éxito. Antes se asignaba ANTES del try, incondicionalmente -- así que
+            // si Subscribe() lanzaba la NullReferenceException descrita arriba, el
+            // catch evitaba que la coroutine muriera pero currentSocket ya había
+            // quedado igualado a lastSeenSocket, y la próxima vuelta del bucle veía
+            // currentSocket == lastSeenSocket y jamás reintentaba: el tópico se
+            // quedaba sordo para siempre tras esa reconexión concreta, en silencio
+            // (solo un LogWarning, sin más rastro) -- el mismo síntoma original que
+            // el try/catch de arriba pretendía resolver, solo que silencioso.
             if (currentSocket != lastSeenSocket)
             {
                 if (!rosConnectorRef.IsOnline) continue;
 
-                lastSeenSocket = currentSocket;
                 try
                 {
                     currentSocket.Subscribe<RosString>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
+                    lastSeenSocket = currentSocket;
                     Debug.Log("[JointPositionSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning("[JointPositionSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex.Message);
+                    Debug.LogWarning("[JointPositionSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex);
                 }
             }
         }

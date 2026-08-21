@@ -50,6 +50,24 @@ namespace RosSharp.RosBridgeClient
             // Se espera indefinidamente a la conexión real, igual que ya hace
             // Ros2CommandSender.WaitForConnectionAndAdvertise() del lado de
             // publicación, y se valida RosSocket antes de usarlo por si acaso.
+            // Se lee Topic UNA sola vez y antes de esperar la conexión: las subclases
+            // deben haberlo fijado antes de llamar a base.Start() (que es quien lanza
+            // este hilo), y Thread.Start() garantiza que esa escritura ya es visible
+            // acá. Leerlo aquí hace que un Topic mal ordenado falle siempre y de forma
+            // visible, en vez de depender de quién gane la carrera contra WaitOne().
+            string topic = Topic;
+
+            if (string.IsNullOrEmpty(topic))
+            {
+                // Antes esto pasaba desapercibido: RosSocket.Subscribe(null, ...) NO
+                // lanza, devuelve su id igual, así que la app quedaba "conectada" pero
+                // sorda en ese tópico para siempre y sin una sola línea en el log.
+                // Le pasaba a JointPositionSubscriber/InverseKinematicsSubscriber, que
+                // asignaban Topic DESPUÉS de base.Start() (ver el FIX en sus Start()).
+                Debug.LogError("[" + GetType().Name + "] Topic vacío al suscribirse: la subclase debe asignar Topic ANTES de llamar a base.Start().");
+                return;
+            }
+
             rosConnector.IsConnected.WaitOne();
 
             if (rosConnector.RosSocket == null)
@@ -58,7 +76,7 @@ namespace RosSharp.RosBridgeClient
                 return;
             }
 
-            rosConnector.RosSocket.Subscribe<T>(Topic, ReceiveMessage, (int)(TimeStep * 1000)); // the rate(in ms in between messages) at which to throttle the topics
+            rosConnector.RosSocket.Subscribe<T>(topic, ReceiveMessage, (int)(TimeStep * 1000)); // the rate(in ms in between messages) at which to throttle the topics
         }
 
         protected abstract void ReceiveMessage(T message);

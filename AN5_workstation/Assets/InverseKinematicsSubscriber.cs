@@ -36,9 +36,14 @@ public class InverseKinematicsSubscriber : UnitySubscriber<RosString>
     // Inicializa la suscripción al tópico ROS correspondiente.
     protected override void Start()
     {
-        base.Start();
-        // Configurar el tópico al que se suscribirá
+        // FIX: Topic DEBE fijarse antes de base.Start() -- ver el comentario largo
+        // en JointPositionSubscriber.Start(). base.Start() lanza el hilo que espera
+        // la conexión y recién ahí lee Topic; con la asignación después, si la
+        // conexión ganaba la carrera el hilo se suscribía con Topic == null, sin
+        // lanzar ningún error, y output_joint_position quedaba sordo en silencio.
         Topic = "output_joint_position"; // Tópico que recibe el resultado de la inversa en posiciones articulares
+
+        base.Start();
 
         rosConnectorRef = GetComponent<RosConnector>();
         StartCoroutine(WatchForReconnect());
@@ -69,19 +74,24 @@ public class InverseKinematicsSubscriber : UnitySubscriber<RosString>
             // FIX: espera a que la conexión esté confirmada (IsOnline) antes de
             // suscribirse, y no deja que un fallo mate la coroutine para siempre --
             // ver el comentario largo en JointPositionSubscriber.WatchForReconnect().
+            //
+            // FIX2: lastSeenSocket solo se actualiza si Subscribe() de verdad tuvo
+            // éxito (ver el mismo FIX2 en JointPositionSubscriber) -- si no, la
+            // próxima vuelta del bucle veía currentSocket == lastSeenSocket y jamás
+            // reintentaba, dejando el tópico sordo para siempre en silencio.
             if (currentSocket != lastSeenSocket)
             {
                 if (!rosConnectorRef.IsOnline) continue;
 
-                lastSeenSocket = currentSocket;
                 try
                 {
                     currentSocket.Subscribe<RosString>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
+                    lastSeenSocket = currentSocket;
                     Debug.Log("[InverseKinematicsSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning("[InverseKinematicsSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex.Message);
+                    Debug.LogWarning("[InverseKinematicsSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex);
                 }
             }
         }

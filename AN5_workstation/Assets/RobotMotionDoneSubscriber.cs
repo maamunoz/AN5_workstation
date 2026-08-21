@@ -64,19 +64,24 @@ public class RobotMotionDoneSubscriber : UnitySubscriber<FRStateMsg>
             // FIX: espera a que la conexión esté confirmada (IsOnline) antes de
             // suscribirse, y no deja que un fallo mate la coroutine para siempre --
             // ver el comentario largo en JointPositionSubscriber.WatchForReconnect().
+            //
+            // FIX2: lastSeenSocket solo se actualiza si Subscribe() de verdad tuvo
+            // éxito (ver el mismo FIX2 en JointPositionSubscriber) -- si no, la
+            // próxima vuelta del bucle veía currentSocket == lastSeenSocket y jamás
+            // reintentaba, dejando el tópico sordo para siempre en silencio.
             if (currentSocket != lastSeenSocket)
             {
                 if (!rosConnectorRef.IsOnline) continue;
 
-                lastSeenSocket = currentSocket;
                 try
                 {
                     currentSocket.Subscribe<FRStateMsg>(Topic, ReceiveMessage, (int)(TimeStep * 1000));
+                    lastSeenSocket = currentSocket;
                     Debug.Log("[RobotMotionDoneSubscriber] RosSocket reconectado, re-suscrito a " + Topic);
                 }
                 catch (System.Exception ex)
                 {
-                    Debug.LogWarning("[RobotMotionDoneSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex.Message);
+                    Debug.LogWarning("[RobotMotionDoneSubscriber] Fallo al re-suscribirse a " + Topic + ": " + ex);
                 }
             }
         }
