@@ -1,18 +1,13 @@
 # Project_AN5 — Interfaz Unity + ROS 2 + MATLAB para el brazo AN5/FR5
 
 Proyecto de control y simulación del brazo colaborativo **AN5/FR5v6 (Fairino, 6 DOF)**,
-desarrollado en la Universidad del Cauca (grupo GIA). Une en un solo repositorio los
-dos componentes que antes vivían en repos separados:
+desarrollado en la Universidad del Cauca (grupo GA).
 
 | Carpeta | Qué es | README propio |
 |---|---|---|
 | [`AN5_workstation/`](AN5_workstation/) | Interfaz de operador en Unity: control articular/cartesiano, grabación y reproducción de trayectorias, visualización 3D del URDF en tiempo real. | [`AN5_workstation/README.md`](AN5_workstation/README.md) |
 | [`ros2_ws/`](ros2_ws/) | Workspace ROS 2 del robot, con modo real (driver Fairino) y modo **mock** (simulación sin brazo físico) para desarrollar contra Unity sin hardware. | [`ros2_ws/README.md`](ros2_ws/README.md), detalle del mock en [`ros2_ws/src/an5_mock_sim/README.md`](ros2_ws/src/an5_mock_sim/README.md) |
 | [`AN5_Matlab/`](AN5_Matlab/) | Scripts MATLAB/Simulink del robot: cinemática directa/inversa (`fr5_fk.m`, `fr5_ik.m`, `inverse_kinematics.m`), generación de trayectorias (`Trayectoria_*.m`), interfaces App Designer (`Interfaz_*.mlapp`) y los assets URDF/mallas de `frcobot_description`. | — (sin README propio) |
-
-Antes eran los repos `Interfaz-Unity-AN5` y `ros2_ws` en GitHub; este repo unificado
-arrancó con un commit inicial "de cero" (sin arrastrar ese historial) para que ambos
-lados del proyecto se versionen juntos de acá en adelante.
 
 ## Qué está implementado
 
@@ -31,6 +26,8 @@ lados del proyecto se versionen juntos de acá en adelante.
 - Jog cartesiano: entrada manual de X/Y/Z/Rx/Ry/Rz que resuelve la cinemática inversa
   contra el puente ROS/MATLAB y aplica el resultado a los joints.
 - Exportación de la cola actual a un `.txt` con marca de tiempo en `routines/`.
+  
+  **NOTA:** La carga de trayectorias requiere el cálculo del IK. Actualmente las posiciones articulares se calculan a través del script de Matlab (inverse_kinematics.m).
 
 **Panel Monitoreo** (visualización)
 - Modelo URDF del FR5v6 animado en tiempo real a partir de los datos articulares
@@ -68,15 +65,11 @@ flowchart TB
 
 Puntos clave:
 
+- **La cinemática inversa la resuelve MATLAB** Verificar que se encuentra corriendo el script antes de cargar una trayectoria
 - **Unity nunca se conecta directo a MATLAB.** Unity solo habla con
   `rosbridge_websocket` (puerto 9090); MATLAB se conecta al grafo ROS 2 (nativo por
   DDS, o por TCP en modo Docker — ver tabla en [Requisitos → MATLAB](#matlab-an5_matlab)).
   Ambos comparten tópicos, no una conexión punto a punto.
-- **La cinemática inversa la resuelve MATLAB**, no Unity: se evaluó moverla a Unity
-  (`RobotKinematics.MgiAn5`, con límites articulares, colisión y reglas de seguridad
-  portadas de `inverse_kinematics.m`) pero la solución de MATLAB resultó más confiable
-  en producción, así que sigue siendo la vía activa
-  (`input_cartesian_position` → `output_joint_position`).
 - **La simulación de movimiento la resuelve `mock_cmd_server`** (ROS 2 nativo, sin
   MATLAB ni robot real): recibe comandos por `api_command` y devuelve el estado
   articular/cartesiano que Unity anima.
@@ -86,11 +79,7 @@ Puntos clave:
 ## Requisitos
 
 ### Unity (`AN5_workstation/`)
-- Unity 6 (o la versión con la que se abrió el proyecto).
-- Linux: drivers Vulkan (`libvulkan1 mesa-vulkan-drivers` o el driver NVIDIA) y
-  `zenity` o `kdialog` (selector de archivos del panel Trayectorias).
-- Windows/macOS: sin dependencias extra (usan PowerShell+WinForms / `osascript`).
-- Ver [`AN5_workstation/README.md`](AN5_workstation/README.md) para el detalle completo.
+- Unity 6 (la versión del editor es 6000.4.6f1). Es posible utilizar otra versión de editor, pero usualmente conlleva a conflictos en funciones o módulos deshabilitados.
 
 ### ROS 2 (`ros2_ws/`)
 - Ubuntu 22.04 + ROS 2 **Humble** (probado)
@@ -100,9 +89,8 @@ Puntos clave:
   (`real.launch.py`) sí necesita el controlador FR5/AN5 accesible en la red.
 
 ### MATLAB (`AN5_Matlab/`)
-- MATLAB (probado con R2023b+) y Simulink para abrir `simulador_trayectorias_AN5.slx`
-  y las interfaces App Designer (`Interfaz_Matlab.mlapp`, `Interfaz_Matlab_Simulacion.mlapp`).
-- `matlab_ik_node` resuelve la cinemática inversa y corre como proceso aparte que se
+- MATLAB (probado con R2023b+). Verificar la instalación del módulo de robótica y ROS.
+- `inverse_kinematics` resuelve la cinemática inversa y corre como proceso aparte que se
   conecta al mismo grafo ROS 2 — no es un paquete ROS 2, hay que levantarlo a mano
   desde MATLAB. **Qué script correr depende de cómo corre `ros2_ws`:**
 
@@ -142,12 +130,12 @@ git clone git@github.com:MooZ91/Project_AN5.git
 ```
 
 Si ya clonaste sin tener `git-lfs` instalado, los archivos grandes van a aparecer
-como punteros de texto en vez de contenido real — corré `git lfs install && git lfs pull`
+como punteros de texto en vez de contenido real — correr `git lfs install && git lfs pull`
 para traerlos. Esto es lo que suele romper Unity al portar el proyecto a otra máquina:
-si los meshes/texturas quedan como punteros, el importer tira una catarata de errores
+si los meshes/texturas quedan como punteros, el importer arroja una catarata de errores
 inconexos en la consola. `AN5_workstation/` trae un chequeo automático para esto (ver
 [`AN5_workstation/README.md`](AN5_workstation/README.md#git-lfs)): al abrir el proyecto
-detecta punteros sin traer y ofrece correr `git lfs pull` por vos.
+detecta punteros sin traer y ofrece ejecutar `git lfs pull`.
 
 ## Puesta en marcha rápida
 
@@ -159,7 +147,7 @@ cd Project_AN5
 # 2. Compilar y levantar el modo simulado de ROS 2
 cd ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --packages-select frhal_msgs code an5_mock_sim
+colcon build
 source install/setup.bash
 ros2 launch an5_mock_sim sim.launch.py
 
@@ -173,7 +161,7 @@ ros2 launch an5_mock_sim sim.launch.py
 
 ## Notas conocidas
 
-- No corrás `sim.launch.py` y `real.launch.py` al mismo tiempo: compiten por el mismo
+- No ejecutar `sim.launch.py` y `real.launch.py` al mismo tiempo: compiten por el mismo
   servicio y los mismos tópicos de estado.
 - El mock (`mock_cmd_server.py`) simula movimiento e IK propios simplificados
   (sin colisión real, sin distinguir forma de trayectoria entre `MoveJ`/`MoveL`); no
