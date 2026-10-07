@@ -9,7 +9,7 @@ using UnityEngine;
 /// /api_command, y este componente le inyecta el estado resultante a los mismos
 /// suscriptores que en modo real reciben current_joint_position,
 /// current_cartesian_position, setpoint_cartesian_position y nonrt_state_data --
-/// asi todos los paneles (sliders, cola, trayectorias, graficos, fulcro) funcionan
+/// asi todos los paneles (sliders, cola, trayectorias, graficos) funcionan
 /// sin cambios y sin saber en que modo estan.
 ///
 /// Port de mock_cmd_server.py: misma gramatica de comandos (JNTPoint, CARTPoint,

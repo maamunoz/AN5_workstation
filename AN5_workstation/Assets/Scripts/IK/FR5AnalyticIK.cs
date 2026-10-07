@@ -64,9 +64,8 @@ public static class FR5AnalyticIK
 
     /// Inversa de BuildTargetMatrix: decodifica (rx,ry,rz) en grados a partir de una
     /// matriz de rotacion, exactamente igual que LocalForwardKinematics.
-    /// CartesianFromJointsDeg. Usado por el constraint RCM (FulcroController) para
-    /// convertir la pose objetivo (ya resuelta como matriz por geometria vectorial)
-    /// de vuelta al formato (x,y,z,rx,ry,rz) que FR5AnalyticIK.Solve espera.
+    /// CartesianFromJointsDeg. Sirve para convertir una pose objetivo construida como
+    /// matriz de vuelta al formato (x,y,z,rx,ry,rz) que FR5AnalyticIK.Solve espera.
     public static void DecodeRxRyRz(Matrix4x4 m, out float rxDeg, out float ryDeg, out float rzDeg)
     {
         ryDeg = Mathf.Atan2(-m[2, 0], Mathf.Sqrt(m[0, 0] * m[0, 0] + m[1, 0] * m[1, 0])) * Mathf.Rad2Deg;

@@ -3,6 +3,41 @@
 Proyecto de control y simulación del brazo colaborativo **AN5/FR5v6 (Fairino, 6 DOF)**,
 desarrollado en la Universidad del Cauca (grupo GA).
 
+## Versiones
+
+### v2.1 — IK interno y modo Simulación sin ROS (actual)
+
+- **Cinemática inversa interna (`FR5AnalyticIK`).** La IK se resuelve en Unity, en C#,
+  con la solución analítica cerrada del FR5v6 (hasta 8 candidatas por pose, cada una
+  verificada contra su propia cinemática directa). Ya no hace falta levantar MATLAB
+  para el jog cartesiano ni para cargar trayectorias. Entre las candidatas válidas
+  elige la más cercana a la pose actual, respeta los límites articulares del URDF y
+  descarta las que llevan el codo o la muñeca contra la mesa.
+- **Postura "grúa".** El hombro (J2) nunca pasa de −45° y se prefiere el codo arriba
+  (J3 > 0), para que el brazo trabaje por encima y no baje hacia la zona de trabajo.
+- **Modo Simulación sin ROS (`LocalRobotSimulator`).** El botón Ejec. Real /
+  Simulación del encabezado cambia entre el robot físico y un robot simulado que
+  corre completo dentro de Unity. Es un port en C# de `mock_cmd_server.py`: usa la
+  misma gramática de comandos, la misma interpolación y la misma pose inicial. No
+  necesita `ros2_ws`, rosbridge ni MATLAB, y la app arranca en este modo por defecto.
+  En Ejec. Real la conexión por ROS 2 funciona igual que en v2.0.
+- El cuadro de carga de trayectorias ya no menciona MATLAB, porque el cálculo es local.
+
+Con esto, varias notas de las secciones siguientes que dicen que la IK depende de
+MATLAB solo aplican a v2.0.
+
+### v2.0 — Interfaz Unity + ROS 2 + MATLAB
+
+- Interfaz de operador en Unity con paneles Principal (control articular de los 6
+  ejes y lectura cartesiana en vivo), Trayectorias (cola de waypoints, jog cartesiano,
+  carga, ejecución y exportación de archivos de trayectoria) y Monitoreo (URDF animado
+  en tiempo real, multi-cámara, grabación de video).
+- Comunicación con el robot vía ROS 2 (`rosbridge_websocket:9090`), con modo real
+  (driver Fairino) y modo simulado (`an5_mock_sim`).
+- Cinemática inversa resuelta por MATLAB (`inverse_kinematics.m` /
+  `inverse_kinematics_docker.m`) a través del grafo ROS 2. La cinemática directa ya
+  se calculaba localmente en Unity (`LocalForwardKinematics.cs`).
+
 | Carpeta | Qué es | README propio |
 |---|---|---|
 | [`AN5_workstation/`](AN5_workstation/) | Interfaz de operador en Unity: control articular/cartesiano, grabación y reproducción de trayectorias, visualización 3D del URDF en tiempo real. | [`AN5_workstation/README.md`](AN5_workstation/README.md) |
