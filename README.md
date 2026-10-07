@@ -21,7 +21,6 @@ desarrollado en la Universidad del Cauca (grupo GA).
   misma gramática de comandos, la misma interpolación y la misma pose inicial. No
   necesita `ros2_ws`, rosbridge ni MATLAB, y la app arranca en este modo por defecto.
   En Ejec. Real la conexión por ROS 2 funciona igual que en v2.0.
-- El cuadro de carga de trayectorias ya no menciona MATLAB, porque el cálculo es local.
 
 ### v2.0 — Interfaz Unity + ROS 2 + MATLAB
 
