@@ -27545,7 +27545,7 @@ MonoBehaviour:
     m_LineSpacing: 1
   m_Text: 'Cargando trayectoria...
 
-    Calculando posiciones (MATLAB)'
+    Calculando posiciones (IK)'
 --- !u!222 &601561179
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -42297,6 +42297,7 @@ RectTransform:
   m_Children:
   - {fileID: 719029536}
   - {fileID: 470464753}
+  - {fileID: 1804141136}
   - {fileID: 1664849014}
   - {fileID: 1608164290}
   - {fileID: 603126912}
@@ -82162,12 +82163,12 @@ RectTransform:
   m_Children:
   - {fileID: 1358369150}
   - {fileID: 922157748}
-  m_Father: {fileID: 1810910656}
+  m_Father: {fileID: 937165237}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 240, y: 0}
+  m_SizeDelta: {x: 0, y: 32}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1804141137
 MonoBehaviour:
@@ -82263,7 +82264,7 @@ MonoBehaviour:
   m_IgnoreLayout: 0
   m_MinWidth: -1
   m_MinHeight: -1
-  m_PreferredWidth: 240
+  m_PreferredWidth: -1
   m_PreferredHeight: -1
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
@@ -82760,7 +82761,6 @@ RectTransform:
   - {fileID: 1589129273}
   - {fileID: 1556662019}
   - {fileID: 1701144344}
-  - {fileID: 1804141136}
   - {fileID: 818137729}
   m_Father: {fileID: 1168093316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -100643,6 +100643,58 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 1280760905473911906, guid: 5a22b82e937531bfb91678e94e9735bc, type: 3}
   m_PrefabInstance: {fileID: 7940559133945365419}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &369266441
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 369266443}
+  - component: {fileID: 369266442}
+  m_Layer: 0
+  m_Name: LocalRobotSimulator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &369266442
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 369266441}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4dd622adc895189e1b54d15bece73983, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LocalRobotSimulator
+  initialJointsDeg:
+  - 0
+  - -90
+  - 90
+  - -90
+  - 90
+  - 0
+  publishRateHz: 50
+--- !u!4 &369266443
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 369266441}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -100678,3 +100730,4 @@ SceneRoots:
   - {fileID: 1986212778}
   - {fileID: 1390762039}
   - {fileID: 1340466411}
+  - {fileID: 369266443}
