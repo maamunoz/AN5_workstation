@@ -46,6 +46,12 @@ public class VrKeyboard : MonoBehaviour
     const float k_PreviewHeight = 72f;
     const int k_Columns = 10;
 
+    /// Campo que se está rellenando con el teclado, o null. El campo se suelta del
+    /// EventSystem al abrir (ver Open), así que su isFocused es false mientras se teclea:
+    /// quien refresque campos por su cuenta (SecCartInputController) mira esto para no
+    /// pisar lo que se está escribiendo.
+    public static InputField EditingField { get; private set; }
+
     RectTransform _root;
     Text _preview;
     InputField _target;
@@ -81,10 +87,24 @@ public class VrKeyboard : MonoBehaviour
         if (_target != null) Cancel();
     }
 
+    void OnDestroy()
+    {
+        if (_target != null && EditingField == _target) EditingField = null;
+    }
+
     void Open(InputField field)
     {
+        // Saltar de un campo a otro con el teclado abierto descarta lo del primero, que
+        // si no se quedaría en blanco (se abrió vacío).
+        if (_target != null && _target != field) _target.SetTextWithoutNotify(_original);
+
         _target = field;
         _original = field.text;
+        EditingField = field;
+
+        // Se empieza en blanco: no hay cursor, así que partir del valor anterior obligaba
+        // a borrarlo tecla a tecla antes de escribir uno nuevo. Cancelar lo restaura.
+        field.SetTextWithoutNotify(string.Empty);
 
         // El campo se suelta del EventSystem nada más abrir. Si se quedara seleccionado,
         // la primera tecla que se pulsara le robaría el foco y Unity dispararía su
@@ -147,6 +167,15 @@ public class VrKeyboard : MonoBehaviour
     {
         var field = _target;
         var text = field != null ? field.text : null;
+
+        // OK sin haber escrito nada vale como Cancelar. Si no, el campo, que se abrió en
+        // blanco, se aplicaría vacío, y SecCartInputController lee un vacío como 0.
+        if (string.IsNullOrEmpty(text))
+        {
+            Cancel();
+            return;
+        }
+
         Close();
 
         if (field == null) return;
@@ -167,6 +196,7 @@ public class VrKeyboard : MonoBehaviour
 
     void Close()
     {
+        if (EditingField == _target) EditingField = null;
         _target = null;
         _original = null;
         if (_root != null) _root.gameObject.SetActive(false);

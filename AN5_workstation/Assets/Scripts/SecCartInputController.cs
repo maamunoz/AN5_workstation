@@ -87,13 +87,18 @@ public class SecCartInputController : MonoBehaviour
     // current_cartesian_position) whenever the user isn't actively typing into
     // any of them -- restores the pre-existing "boxes move with the robot"
     // behavior that CartesianStateWriterNew used to provide.
+    //
+    // On the Quest the boxes are filled through VrKeyboard, which drops the
+    // field's focus on open (so onEndEdit only fires on OK): isFocused is false
+    // the whole time the user types, so VrKeyboard.EditingField is checked too
+    // -- otherwise this would overwrite every keystroke within 0.5s.
     private void RefreshLivePosition()
     {
         if (cartesianPositionSubscriber == null) return;
 
         var inputs = AllInputs;
         foreach (var field in inputs)
-            if (field != null && field.isFocused)
+            if (field != null && (field.isFocused || field == VrKeyboard.EditingField))
                 return;
 
         float[] positions = cartesianPositionSubscriber.GetLastKnownCartesianPositions();
